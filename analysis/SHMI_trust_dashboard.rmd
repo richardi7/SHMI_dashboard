@@ -1,0 +1,1857 @@
+---
+title: "`r params$trust` SHMI report"
+output: 
+  flexdashboard::flex_dashboard:
+    theme: cosmo
+    orientation: rows
+params: 
+    trust: RQW
+    
+logo: ../ext/i7white08.png
+---
+
+```{r libraries, include=FALSE}
+library(flexdashboard)#flexdashboard
+library(tidyr)        # string functions
+library(tidyverse)    #tidyverse functions
+library(dplyr)        #general functions
+library(scales)       #chart scales
+library(lubridate)    #working with dates
+library(plotly)       #charts
+library(FunnelPlotR)  #funnel plots
+library(sqldf)        #sql functionality
+library(kableExtra)   #table format
+```
+
+```{r setup, include=FALSE}
+
+data_shmi<-  read_rds("../data/NHSD SHMI.rds")
+data_diagnostic<-  read_rds("../data/NHSD SHMI conditions.rds")
+
+#variables for key dates and text fields
+first_publication=min(data_shmi$PeriodEnd)
+latest_publication=max(data_shmi$PeriodEnd)
+first_diag_publication=min(data_diagnostic$PeriodEnd)
+latest_diag_publication=max(data_diagnostic$PeriodEnd)
+
+latest_publication_text<-format(latest_publication,'%b %Y')
+from_publication_text<-format(latest_publication-330,'%b %Y')
+
+trustname<-data_shmi%>%filter(ProviderCode ==params$trust & latest_diag_publication==PeriodEnd 
+                              & measure=="SHMI_VALUE" & is.na(SiteType))
+
+trustband<-data_shmi%>%filter(ProviderCode ==params$trust & latest_diag_publication==PeriodEnd 
+                              & measure=="SHMI_BANDING" & is.na(SiteType))
+
+hi_or_low = case_when(
+  trustband$value==1 ~ "is higher than expected",
+  trustband$value==2 ~ "is as expected",
+  trustband$value==3 ~ "is lower than expected",
+  TRUE ~ "NA")
+
+#functions
+source("../src/fun_ribbon.R")
+source("../src/visual_format.R")
+source("../src/fonts.R")
+```
+
+```{r  list and labels, include=FALSE}
+#create list and labels for next set of charts
+
+measure_list=c('SHMI_SPELLS',
+               'SHMI_OBSERVED',
+               'SHMI_EXPECTED',
+               'SHMI_Excess_Deaths',
+               "Number of deaths which occurred in hospital",
+               "Number of deaths which occurred outside hospital",
+               "Number of spells with either palliative care specialty or diagnosis coding",
+               "Number of spells with palliative care diagnosis coding",
+               "Number of spells with palliative care specialty coding",
+               "Number of deaths with either palliative care specialty or diagnosis coding",
+               "Number of deaths with palliative care diagnosis coding",
+               "Number of deaths with palliative care specialty coding",
+               "Number of spells with an invalid primary diagnosis code",
+               "Number of spells with a primary diagnosis which is a symptom or sign",
+               "Number of elective admissions where a death occurred",
+               "Number of elective admissions",
+               "Number of non-elective admissions where a death occurred",
+               "Number of non-elective admissions",
+               "Non-elective crude mortality",
+               "Elective crude mortality",
+               "Crude rate",
+               'Percentage of deaths which occurred in hospital',
+               'Percentage of deaths which occurred outside hospital'
+)
+measure_shortlabel=c(  "Spells",
+                       "Deaths",
+                       "Expected",
+                       "Excess deaths",
+                       "Deaths in  \n hospital",
+                       "Deaths outside  \n hospital",
+                       "Spells with \n palliative care",
+                       "Spells with \n palliative care \n diagnosis coding",
+                       "Spells with \n palliative care \n specialty coding",
+                       "Deaths with \n palliative care",
+                       "Deaths with \n palliative care \n diagnosis coding",
+                       "Deaths with \n palliative care \n specialty coding",
+                       "Spells invalid diagnosis",
+                       "Spells diagnosis \n symptom or sign",
+                       "Elective \n deaths",
+                       "Elective \n admissions",
+                       "Non-elective\n deaths",
+                       "Non-elective \n admissions",
+                       "Non-elective \n crude mortality",
+                       "Elective \n crude mortality",
+                       "Crude rate",
+                       "Deaths in  \n hospital (%)",
+                       "Deaths outside  \n hospital (%)")
+
+shmi_list=c('SHMI_VALUE',
+               'SHMI_OD_UL',
+               'SHMI_OD_LL')
+
+
+coding_list=c('Mean_coding_depth_for_elective_admissions',
+                   'Percentage_of_spells_with_a_primary_diagnosis_which_is_a_symptom_or_sign',
+                   'Mean_coding_depth_for_nonelective_admissions',
+                   'Percentage_of_spells_with_an_invalid_primary_diagnosis_code')
+#print   firendly labels
+coding_shortlabel=c(  "Coding depth (elective)",
+                     "Primary diagnosis symptom or sign(%)",
+                     "Coding depth (non-elective)",
+                     "Invalid primary diagnosis(%)")
+
+admissionmethod<- c(               'SHMI_SPELLS',
+                                   'SHMI_OBSERVED',
+                                   "Number of elective admissions where a death occurred",
+                                   "Number of elective admissions",
+                                   "Number of non-elective admissions where a death occurred",
+                                   "Number of non-elective admissions")
+
+growth_list=c('SHMI_SPELLS',
+              'SHMI_OBSERVED',
+              "Number of elective admissions",
+              "Number of non-elective admissions"
+)
+
+growth_labels=c('Spells (% growth)',
+                'Deaths (% growth)' ,
+                'Elective admissions (% growth)',
+                'Non-elective admissions (% growth)'
+)
+
+count_list=c('SHMI_SPELLS',
+             'SHMI_OBSERVED',
+             'SHMI_EXPECTED',
+             'SHMI_Excess_Deaths')
+
+pod_list=c('Percentage_of_deaths_which_occurred_in_hospital' ,
+           'Percentage_of_deaths_which_occurred_outside_hospital',
+           'Percentage_of_spells_with_either_palliative_care_specialty_or_diagnosis_coding',
+           'Percentage_of_deaths_with_either_palliative_care_specialty_or_diagnosis_coding' 
+)
+
+pod_label=c("Deaths in hospital (%)",  
+            "Deaths outside hospital (%)",
+            "Spells with palliative care (%)",
+            "Deaths with palliative care (%)")
+
+
+measures_str<-cbind(measure_list,measure_shortlabel)
+growth_str<-cbind(growth_list,growth_labels)
+pod_str<-cbind(pod_list,pod_label)
+```
+
+```{r excess deaths by condition, include=FALSE}
+#create bar chart for excess conditions
+#use data for the latest month
+by_condition <-
+  data_diagnostic %>% filter(ProviderCode == params$trust &
+                               PeriodEnd == latest_publication) %>%
+  group_by(short_label) %>%
+  summarise(
+    Excess_deaths = round(SHMI_Diagnosis_excess, 0),
+    balance_deaths    = round(Expected_Diagnosis + SHMI_Diagnosis_excess, 0)
+  )
+
+#create series for survivors where excess deaths are <0
+by_condition$survivors=ifelse(by_condition$Excess_deaths<0,by_condition$Excess_deaths,NA)
+#create series for excess mortality exc survivors
+by_condition$excess_mortality=ifelse(by_condition$Excess_deaths>0,by_condition$Excess_deaths,NA)
+#to simplify chart presentation only show conditions with survivors or excess deaths
+by_condition<-by_condition%>% filter(by_condition$Excess_deaths!=0)
+
+#arrange series into presentation order
+by_condition_plotly=sqldf("Select short_label, Excess_deaths,balance_deaths,survivors,excess_mortality from by_condition  order by 2 asc,3 asc,1 desc")
+
+
+by_condition_textHI=sqldf("Select short_label, Excess_deaths,balance_deaths,survivors,excess_mortality from by_condition  order by Excess_deaths desc,balance_deaths asc ")
+by_condition_textLO=sqldf("Select short_label, Excess_deaths,balance_deaths,survivors,excess_mortality from by_condition  order by Excess_deaths asc,balance_deaths asc ")
+
+
+#find if trust has any higher than expected outliers identified by NHS Digital
+NHSD_outliers <- data_diagnostic %>%
+  filter(
+    ProviderCode == params$trust &
+      PeriodEnd == latest_publication &
+      (
+        SHMI_Diagnosis_banding_NHSD == 1 |
+          SHMI_Diagnosis_banding_NHSD == 3
+      )
+  ) %>%
+  group_by(short_label)
+
+
+NHSD_outliers <- NHSD_outliers %>% mutate(
+  hi_or_low = case_when(
+    trustband$value == 1 ~ "is higher than expected",
+    trustband$value == 3 ~ "is lower than expected",
+    TRUE ~ "NA"
+  )
+)
+
+#strip put conditions where not an outlier
+NHSD_outliersTF <- sum(is.na(NHSD_outliers$hi_or_low))
+
+#plot chart
+diag_excess_fig <-
+  plot_ly(
+    by_condition_plotly,
+    x = ~ balance_deaths,
+    y = ~ short_label,
+    type = 'bar',
+    orientation = 'h',
+    color = "steelblue",
+    text =  ~ short_label,
+    hovertemplate = paste(
+      "<b>%{text}</b><br>",
+      "Expected Deaths: %{x:}",
+      "<extra></extra>"
+    )
+  )
+#add survivor series
+diag_excess_fig <-
+  diag_excess_fig %>% add_trace(
+    x = ~ survivors,
+    y = ~ short_label,
+    name = 'survivors',
+    color = "green",
+    text =  ~ short_label,
+    hovertemplate = paste("<b>%{text}</b><br>",
+                          "Fewer deaths: %{x:}",  "<extra></extra>")
+  )
+#add excess mortality series
+diag_excess_fig <-
+  diag_excess_fig %>% add_trace(
+    x = ~ excess_mortality,
+    y = ~ short_label,
+    name = 'excess',
+    color = "red",
+    text =  ~ short_label,
+    hovertemplate = paste(
+      "<b>%{text}</b><br>",
+      "Excess deaths: %{x:}",
+      "<extra></extra>"
+    )
+  )
+
+#set axis themes
+x_theme <-
+  list(
+    title = "Deaths",
+    showticklabels = TRUE,
+    tickfont = f8,
+    showgrid = FALSE
+  )
+y_theme <- list(
+  categoryorder = "array",
+  categoryarray = by_condition_plotly$short_label,
+  type = 'categorical',
+  tickmode = 'linear',
+  title = "",
+  showticklabels = TRUE,
+  tickfont = f6,
+  showgrid = FALSE
+)
+#Add themes to chart
+diag_excess_fig <-
+  diag_excess_fig %>% layout(
+    xaxis = x_theme,
+    yaxis = y_theme,
+    showlegend = FALSE,
+    barmode = "relative"
+  )
+
+```
+
+```{r  condition over time, include=FALSE}
+#create bubble chart for conditions over time
+
+#to simplify presentation only include conditions with obs and expected deaths >5
+conditions<-data_diagnostic %>% filter(ProviderCode==params$trust & Observed_Diagnosis>5 & (Expected_Diagnosis<-5|Expected_Diagnosis>5))%>% 
+  select(one_word, PeriodEnd, SHMI_Diagnosis_excess, SHMI_Diagnosis,Observed_Diagnosis,Expected_Diagnosis) 
+
+#to order chart need to rank by latest data
+conditions_latest <- conditions %>% 
+  filter(PeriodEnd == latest_diag_publication) 
+
+conditions_latest$rank=rank(desc(conditions_latest$SHMI_Diagnosis_excess))
+
+conditions_latest <-
+  sqldf(
+    "select one_word,SHMI_Diagnosis_excess,SHMI_Diagnosis from conditions_latest where SHMI_Diagnosis_excess <> 'NA'  order by SHMI_Diagnosis_excess,SHMI_Diagnosis desc "
+  )
+
+#add latest rank to data frame
+condition_ranked <-
+  left_join(conditions_latest, conditions, by = c("one_word" = "one_word"))
+
+#tidy up post join
+#select only fields needed
+condition_ranked <-
+  select(condition_ranked,
+         one_word,
+         PeriodEnd,
+         SHMI_Diagnosis_excess.y,
+         SHMI_Diagnosis.y)
+
+#rename fields
+condition_ranked <-
+  condition_ranked %>% rename(SHMI_Diagnosis_excess = "SHMI_Diagnosis_excess.y")
+condition_ranked <-
+  condition_ranked %>% rename(SHMI_Diagnosis = "SHMI_Diagnosis.y")
+
+#limit excess deaths to less than -5 and greaer than 5 to simplify display and concentrate on larger conditions
+condition_ranked$SHMI_Diagnosis_excess =
+  ifelse((
+    condition_ranked$SHMI_Diagnosis_excess <= -5 |
+      condition_ranked$SHMI_Diagnosis_excess > 5
+  ),
+  condition_ranked$SHMI_Diagnosis_excess,
+  NA
+  )
+
+#limit shmi range to 0 to 3, and 0.3 to 0 to reduce small number effects skewing the colours
+condition_ranked$SHMI_Diagnosis = ifelse(
+  condition_ranked$SHMI_Diagnosis > 3,
+  3,
+  ifelse(
+    condition_ranked$SHMI_Diagnosis < 0.3,
+    0.3,
+    condition_ranked$SHMI_Diagnosis
+  )
+)
+condition_ranked$SHMI_Diagnosis = ifelse(
+  is.na(condition_ranked$SHMI_Diagnosis_excess),
+  NA,
+  condition_ranked$SHMI_Diagnosis
+)
+
+
+#remove NA rows
+condition_ranked$SHMI_Diagnosis = ifelse(
+  is.na(condition_ranked$SHMI_Diagnosis_excess),
+  NA,
+  condition_ranked$SHMI_Diagnosis
+)
+
+#standardised the colour of the bubbles
+condition_ranked$SHMI_Diagnosis_scaled = ifelse(
+  condition_ranked$SHMI_Diagnosis > 1,
+  sqrt(condition_ranked$SHMI_Diagnosis),
+  sqrt(1 / condition_ranked$SHMI_Diagnosis) * -1
+)
+
+#create list to order x ais correctly
+xform <- list(categoryorder = "array",
+              categoryarray = conditions_latest$one_word)
+
+#create chart
+condition_over_time_fig <-
+  plot_ly(    condition_ranked,    x = ~ PeriodEnd,    y = ~ one_word,
+    name = 'Excess deaths',
+    type = 'scatter',
+    mode = 'markers',
+    marker = list(
+      size = ~ abs(SHMI_Diagnosis_excess),
+      sizeref = 2,
+      sizemode = 'diameter',
+      opacity = 0.5,
+      color = ~ SHMI_Diagnosis_scaled,
+      colorscale = "Cividis",
+      reversescale = T,
+      line = list(width = 0)
+    ),
+    text =  ~ paste(one_word,'Period upto:',PeriodEnd,
+      '<br>Excess deaths:',SHMI_Diagnosis_excess,
+      '<br>SHMI:',round(SHMI_Diagnosis, 2)
+    ),
+    hoverinfo = 'text'
+  )
+
+#set up axis themes
+x_theme <-
+  list(
+    title = "",
+    type = 'date',
+    showticklabels = TRUE,
+    tickfont = f10,
+    showgrid = FALSE,
+    range = c(first_diag_publication, latest_diag_publication)
+  )
+y_theme <- list(
+  categoryorder = "array",
+  categoryarray = conditions_latest$one_word,
+  type = 'categorical',
+  tickmode = 'linear',
+  title = "",
+  showticklabels = TRUE,
+  tickfont = f10,
+  showgrid = FALSE
+)
+
+#create final chart
+condition_over_time_fig <- condition_over_time_fig %>%
+  layout(xaxis = x_theme, yaxis = y_theme) %>%
+  hide_colorbar()
+
+```
+
+```{r  SHMi, include=FALSE}
+#create SHMI line chart
+
+#select the data for chart   
+shmi<-data_shmi %>% 
+      filter(ProviderCode ==params$trust & is.na(SiteCode) & measure %in% shmi_list)%>%
+      select(PeriodEnd,measure,value)
+
+#select the data for outlier points - lower than expected   
+below_pts<-shmi %>%
+      filter(measure %in% c('SHMI_VALUE','SHMI_OD_LL')) %>%
+      select(PeriodEnd,measure,value)
+#data needs to be in longer format to calculate outlier status     
+below_pts<-below_pts%>% pivot_wider(names_from = measure, values_from = value)
+#If value below OD_LL then use value otherwise set to NA
+below_pts$below_limt=ifelse(below_pts$SHMI_VALUE<below_pts$SHMI_OD_LL,below_pts$SHMI_VALUE,NA)
+#rename column to value
+names(below_pts)[4] <- "value"
+#add column to identify new measure
+below_pts$measure="below_limt"
+below_pts$value=as.numeric(below_pts$value)
+#trim dataframe to include only relevant columns
+below_pts<-select(below_pts,PeriodEnd,measure,value)
+     
+#repeat process for above limits higher than expected
+above_pts<-shmi %>% 
+      filter(measure %in% c('SHMI_VALUE', 'SHMI_OD_UL')) %>%   
+      select(PeriodEnd,measure,value)
+
+above_pts<-above_pts%>% pivot_wider(names_from = measure, values_from = value)
+above_pts$above_limt=ifelse(above_pts$SHMI_VALUE>above_pts$SHMI_OD_UL,above_pts$SHMI_VALUE,NA)
+names(above_pts)[4] <- "value"
+above_pts$measure="above_limt"
+above_pts$value=as.numeric(above_pts$value)
+above_pts<-select(above_pts,PeriodEnd,measure,value)
+
+#create plot data set by binding the shmi with above and below points
+shmi_plotly<-rbind(shmi,above_pts,below_pts)
+
+#ploty works best with wider data frame
+shmi_plotly<-shmi_plotly%>% pivot_wider(names_from = measure, values_from = value)
+#order into time line
+shmi_plotly=sqldf("Select * from shmi_plotly order by PeriodEnd")
+#add a shmi = 1 index line
+shmi_plotly$index=1
+
+#create chart
+fig<- plot_ly(shmi_plotly, x = ~PeriodEnd)
+#add as expected series
+fig <- fig %>% add_trace(y = ~SHMI_VALUE, name = 'As expected',mode='lines', 
+                         line = list(color = 'steelblue', width = 2),
+                         hoverinfo = 'text',
+                         text=~paste('As expected:', SHMI_VALUE,
+                                     '<br>',format(PeriodEnd,'%b-%Y'))) 
+#add upper limit
+fig <- fig %>% add_trace(y = ~SHMI_OD_UL, name = 'Over dispersion limits', mode='lines', 
+                         line = list(color = 'lightgrey', width = 2),
+                         hoverinfo = 'text',
+                         text=~paste('<br>Upper limit:', SHMI_OD_UL,
+                                     '<br>',format(PeriodEnd,'%b-%Y')))  
+#add index
+fig <- fig %>% add_trace(y = ~index, name = 'Index', mode='lines', 
+                         line = list(color = 'grey', width = 2, dash = 'dash'),
+                         hoverinfo = 'skip', showlegend=FALSE)
+#add lower limit
+fig <- fig %>% add_trace(y = ~SHMI_OD_LL, name = 'lower', mode='lines', 
+                         line = list(color = 'lightgrey', width = 2),
+                         hoverinfo = 'text',
+                         text=~paste('<br>Lower limit:', SHMI_OD_UL,
+                                     '<br>',format(PeriodEnd,'%b-%Y')), showlegend = FALSE)
+#add higher than expected
+fig <- fig %>% add_trace(y = ~above_limt, name = 'Higher than expected',  mode = 'markers',
+                         connectgaps = FALSE, hoverinfo = 'text',
+                         text=~paste('Higher than expected:', SHMI_VALUE,
+                                     '<br>',format(PeriodEnd,'%b-%Y')),
+                         marker = list(color='red',line = list(color = 'red')))
+#add lower than expected
+fig <- fig %>% add_trace(y = ~below_limt, name = 'Lower than expected',  mode = 'markers', 
+                         connectgaps = FALSE,hoverinfo = 'text',
+                         text=~paste('Lower than expected:', SHMI_VALUE,
+                                     '<br>',format(PeriodEnd,'%b-%Y')),
+                         marker = list(color='green', line = list(color = 'green'))) 
+#set up axis themes
+x_theme <- list(  title = "",  showticklabels = TRUE,  tickfont = f10,  showgrid = FALSE)
+y_theme <- list(  title = "",  showticklabels = TRUE,  tickfont = f10,  showgrid = FALSE)
+
+#create final chart
+fig<- fig %>%layout(xaxis = x_theme, yaxis = y_theme, legend = list(x=0.1,y=-0.2,orientation = 'h'))
+```
+
+```{r  SHMI text, include=FALSE}
+#create shmi text for summary page
+
+shmi_text<- data_shmi%>%filter(ProviderCode ==params$trust & is.na(SiteType))
+
+#add variables for the previous period to compare latest too
+shmi_text <-  shmi_text %>%
+  group_by(measure) %>%
+  mutate(previous_value = lag(value, order_by =PeriodEnd)) %>%
+  mutate(previous_period = lag(PeriodEnd, order_by =  PeriodEnd))
+
+shmi_text <-  arrange(shmi_text, measure, PeriodEnd)
+
+#create variable for latest period, alues and band
+shmi_textlatest<-shmi_text[shmi_text$PeriodEnd == latest_publication, ]
+shmi_textlatestSHMI<-shmi_textlatest[shmi_textlatest$measure == "SHMI_VALUE", ]
+shmi_textlatestBAND<-shmi_textlatest[shmi_textlatest$measure == "SHMI_BANDING", ]
+
+```
+
+```{r  SHMI SITE, include=FALSE}
+#create charts by site using ggplot for facet wrap
+
+year<-data_shmi%>%filter(ProviderCode ==params$trust)
+
+#this time instead of filtering out sites filter out trust using !is.na
+shmi_site<-data_shmi %>% 
+  filter(ProviderCode ==params$trust  & measure %in% shmi_list & !is.na(SiteName) &value>0  &
+           !(SiteName %in% c("UNIVERSITY HOSPITAL AINTREE","WEST CUMBERLAND HOSPITAL","CUMBERLAND INFIRMARY"))) %>%
+  select(SiteName,PeriodEnd,measure,value)
+
+#as with trust level identify outliers
+below_pts_site<-shmi_site %>%
+  filter(measure %in% c('SHMI_VALUE', 'SHMI_OD_LL')) %>%
+  select(SiteName,PeriodEnd,measure,value)
+
+below_pts_site<-below_pts_site%>% 
+  pivot_wider(names_from = measure, values_from = value)
+below_pts_site$below_limt=ifelse(below_pts_site$SHMI_VALUE<below_pts_site$SHMI_OD_LL,below_pts_site$SHMI_VALUE,NA)
+names(below_pts_site)[5] <- "value"
+below_pts_site$measure="below_limt"
+below_pts_site$value=as.numeric(below_pts_site$value)
+below_pts_site<-select(below_pts_site,SiteName,PeriodEnd,measure,value)
+
+above_pts_site<-shmi_site %>% 
+  filter(measure %in% c('SHMI_VALUE','SHMI_OD_UL')) %>% 
+  select(SiteName,PeriodEnd,measure,value)
+above_pts_site<-above_pts_site%>% pivot_wider(names_from = measure, values_from = value)
+above_pts_site$above_limt=ifelse(above_pts_site$SHMI_VALUE>above_pts_site$SHMI_OD_UL,above_pts_site$SHMI_VALUE,NA)
+names(above_pts_site)[5] <- "value"
+above_pts_site$measure="above_limt"
+above_pts_site$value=as.numeric(above_pts_site$value)
+above_pts_site<-select(above_pts_site,SiteName,PeriodEnd,measure,value)
+
+#tidy up data frame into presentation friendly labels
+shmi_site$value=round(shmi_site$value,3)
+shmi_site<-rename(shmi_site,Value=value)
+shmi_site<-rename(shmi_site,Measure=measure)
+shmi_site<-rename(shmi_site,`12 months to`="PeriodEnd")
+shmi_site<- shmi_site%>% mutate(Measure=case_when(
+  Measure=="SHMI_VALUE"~"SHMI",
+ Measure=="SHMI_OD_UL"~"Upper limit",
+ Measure=="SHMI_OD_LL"~"Lower limit", 
+  TRUE ~ "NA"))
+
+#create chart
+shmi_site_chart<- ggplot(shmi_site, aes(x=`12 months to`, y=Value,colour=Measure)) + 
+  geom_line()+
+  geom_hline(yintercept = 1, colour="darkgrey",linetype=2)+
+  ylab("SHMI") +
+  facet_wrap(~SiteName)+
+  scale_colour_manual(values=SHMI_color_group) +
+  theme_i7()+theme( axis.text = element_text(size = 6),plot.title = element_text(size=8),
+                    axis.text.y = element_text(size=8),
+                    strip.text = element_text(size=8))
+
+#add above and below points
+shmi_site_chart<-shmi_site_chart+
+  geom_point(data=below_pts_site,aes(x=PeriodEnd,y=value),colour="green")+
+  geom_point(data=above_pts_site,aes(x=PeriodEnd,y=value),colour="red")
+
+```
+
+```{r  funnel trust, include=FALSE}
+#create funnel for all trusts using FunnelPlotR
+
+#use list to filter the variables required
+funnel_list=c('SHMI_VALUE',
+              'SHMI_OBSERVED',
+              'SHMI_EXPECTED')
+
+data_funnel<-data_shmi %>% filter(PeriodEnd==latest_publication & is.na(SiteCode) & !is.na(Shortname)&
+                                    (OrganisationName!="England"& OrganisationName!="ENGLAND") & measure %in% funnel_list) %>%
+  select(Shortname, PeriodEnd, measure, value) 
+
+data_funnel<- data_funnel%>% 
+  pivot_wider(names_from = measure, values_from = value)
+
+#call funnel_plot to create data for chart
+funnel_plot<-funnel_plot(numerator=data_funnel$SHMI_OBSERVED, denominator=data_funnel$SHMI_EXPECTED, 
+                              group = data_funnel$Shortname, data_type="SR",
+                              title = 'SHMI', Poisson_limits = FALSE,
+                              OD_adjust = TRUE, sr_method = "SHMI",label_outliers = TRUE)
+
+funnel_plot_data<-
+  funnel_plot$aggregated_data
+
+#tidy up column names into user friendly labels
+funnel_plot_data<-funnel_plot_data%>%rename(SHMI="rr")
+funnel_plot_data<-funnel_plot_data%>%rename(`Expected deaths`="denominator")
+funnel_plot_data<-funnel_plot_data%>%rename(`Observed`="numerator")
+funnel_plot_data<-funnel_plot_data%>%rename(`Lower limit`="OD95LCL")
+funnel_plot_data<-funnel_plot_data%>%rename(`Upper limit`="OD95UCL")
+funnel_plot_data<-funnel_plot_data%>%rename(Trust="group")
+
+#identify outliers
+below_pts_funnel<-funnel_plot_data
+above_pts_funnel<-funnel_plot_data
+below_pts_funnel$value=ifelse(below_pts_funnel$SHMI<below_pts_funnel$`Lower limit`,below_pts_funnel$SHMI,NA)
+above_pts_funnel$value=ifelse(above_pts_funnel$SHMI>above_pts_funnel$`Upper limit`,above_pts_funnel$SHMI,NA)
+
+above_pts_table<-above_pts_funnel %>% 
+  filter (!is.na(value) | Trust ==trustname$Shortname )%>% 
+  select(Trust, `Expected deaths`,SHMI,`Lower limit`,`Upper limit`)
+
+limits<-limits(funnel_plot)
+
+#tidy up column names into user friendly labels
+limits<-limits%>%rename(limit_x="number.seq")
+limits<-limits%>%rename(`Lower limit`="odll95")
+limits<-limits%>%rename(`Upper limit`="odul95")
+limits<-limits%>%select(limit_x,`Lower limit`,`Upper limit`)
+
+#select only fields needed for chart, makes it easier later after join
+funnel_plot_data<-funnel_plot_data%>%
+  select(Trust,Observed,`Expected deaths`,SHMI,`Lower limit`,`Upper limit`)
+
+#join add outliers to funnel chart
+funnel_plot_data<- full_join(funnel_plot_data,limits)
+#add shmi index line
+funnel_plot_data$index=1
+
+#add columns with outlier points
+funnel_plot_data$`Lower than expected`=
+  ifelse(funnel_plot_data$SHMI<funnel_plot_data$`Lower limit`,funnel_plot_data$SHMI,NA)
+funnel_plot_data$`Higher than expected`=
+  ifelse(funnel_plot_data$SHMI>funnel_plot_data$`Upper limit`,funnel_plot_data$SHMI,NA)
+#add column for excess deaths and for absolute version for sizing markers
+funnel_plot_data$`Excess deaths`= funnel_plot_data$Observed - funnel_plot_data$`Expected deaths`
+funnel_plot_data$abs_expected=abs(funnel_plot_data$`Excess deaths`)
+#round SHMI to just 3 points
+funnel_plot_data$SHMI=round(funnel_plot_data$SHMI,3)
+
+#filter data to start at 200 as no trust has less than 200 expected deaths, if you leave this in the y axis is expanded too high
+funnel_plot_data<-funnel_plot_data%>% filter(`Expected deaths`>=100 | limit_x>100)
+limits<-limits%>% filter(limit_x>=100)
+
+#Series to plot current trust
+funnel_plot_trust<-funnel_plot_data %>% 
+  filter (Trust ==trustname$Shortname)
+
+#in chart only want to present point once so set SHMI value for NA where there will be an outlier value
+funnel_plot_data$SHMIPlot=
+  ifelse(!is.na(funnel_plot_data$`Lower than expected`)|
+           !is.na(funnel_plot_data$`Higher than expected`)|funnel_plot_data$Trust==trustname$Shortname,NA,funnel_plot_data$SHMI)
+
+
+
+#create chart
+funnel_chartfig<- plot_ly(funnel_plot_data, x = ~`Expected deaths`)
+
+#add as expected points
+funnel_chartfig <- funnel_chartfig %>% add_trace(y = ~SHMIPlot, name = 'As expected',type = "scatter",  
+                         mode = 'markers',
+                         marker = list(color='grey'),hoverinfo = 'text',text=~paste(Trust, '<br>SHMI:', SHMI))
+#add index line
+funnel_chartfig <- funnel_chartfig %>% add_trace(y = ~index, name = 'Index',type = "scatter", 
+                                                 mode='lines', 
+                                                 line = list(color = 'grey', width = 2, dash ='dash'),
+                                                 hoverinfo='skip', showlegend = FALSE) 
+#add higher than expected points
+funnel_chartfig <- funnel_chartfig %>% add_trace(y = ~`Higher than expected`, name = 'Higher than expected',
+                                                 type = "scatter",  mode = 'markers',
+                                                 size = ~abs_expected, sizemode = 'diameter',
+                                                 marker = list(color='red',line = list(color = 'red', width =2)),
+                                                 hoverinfo = 'text', 
+                                                 text=~paste(Trust, 'SHMI:', SHMI))
+#add lower than expected points
+funnel_chartfig <- funnel_chartfig %>% add_trace(y = ~`Lower than expected`, name = 'Lower than expected', 
+                                                 type = "scatter",  mode = 'markers',
+                                                 size = ~abs_expected,sizemode = 'diameter', 
+                                                 marker = list(color='green', line = list(color = 'green', width=2)),
+                                                 hoverinfo = 'text',
+                                                 text=~paste(Trust, 'SHMI:', SHMI) )
+# add trust point
+funnel_chartfig <- funnel_chartfig %>% add_trace(x=funnel_plot_trust$`Expected deaths`, 
+                                                 y =~funnel_plot_trust$SHMI,
+                                                 name= ~funnel_plot_trust$Trust, type = "scatter",  
+                                                 mode = 'markers',
+                                                 marker = list(size = 10, color='blue',
+                                                 line = list(color = 'blue', width =2)),
+                                                 hoverinfo = 'text',text=~paste(funnel_plot_trust$Trust,'SHMI:',funnel_plot_trust$SHMI)
+                                                 )
+
+#add lower limits
+funnel_chartfig <- funnel_chartfig %>% add_lines(x = funnel_plot_data$limit_x, y = ~`Lower limit`, 
+                                                 name = '95% Over dispersion limits',type = "scatter", 
+                                                 mode='lines', line = list(color = 'lightgrey', width = 2),
+                                                 hoverinfo='skip') 
+#add upper limits
+funnel_chartfig <- funnel_chartfig %>% add_trace(x= funnel_plot_data$limit_x, y = ~`Upper limit`, 
+                                                 name = 'upper',type = "scatter", mode='lines', 
+                                                 line = list(color = 'lightgrey', width = 2),
+                                                 hoverinfo='skip', showlegend = FALSE) 
+
+#set up axis themes
+x_theme <- list(  title = "Expected deaths",  showticklabels = TRUE,   tickfont = f10,  showgrid = FALSE)
+y_theme <- list(  title = "SHMI",  showticklabels = TRUE,  tickfont = f10,  showgrid = FALSE)
+#title text
+title_text=paste0('SHMI: ',from_publication_text,' to ',latest_publication_text)
+
+#final chart
+funnel_chartfig<- funnel_chartfig %>%
+  layout(title = list(text=title_text,font=list(size=15)), xaxis = x_theme, yaxis = y_theme)
+
+```
+
+```{r  funnel condition, include=FALSE}
+#create funnel for conditions using FunnelPlotR
+
+data_funnel_condition<-data_diagnostic %>% 
+  filter(PeriodEnd==latest_publication  & ProviderCode==params$trust  & Observed_Diagnosis>0 &
+           Expected_Diagnosis>0)%>% 
+           select(short_label, PeriodEnd, SHMI_Diagnosis,Observed_Diagnosis, Expected_Diagnosis) 
+
+#call FunnelPlotR to create funnel chart data
+funnel_plot_data<-funnel_plot(numerator=data_funnel_condition$Observed_Diagnosis,
+                                        denominator=data_funnel_condition$Expected_Diagnosis, 
+                                        group = data_funnel_condition$short_label,  title = 'SHMI', 
+                                        Poisson_limits = FALSE,OD_adjust = TRUE, sr_method = "SHMI",
+                                        label_outliers = FALSE)
+
+funnel_plot_data_condition<-
+  funnel_plot_data$aggregated_data
+
+#tidy up user firendly labels
+funnel_plot_data_condition<-funnel_plot_data_condition%>%rename(SHMI="rr")
+funnel_plot_data_condition<-funnel_plot_data_condition%>%rename(`Expected deaths`="denominator")
+funnel_plot_data_condition<-funnel_plot_data_condition%>%rename(`Observed`="numerator")
+funnel_plot_data_condition<-funnel_plot_data_condition%>%rename(`Lower limit`="OD95LCL")
+funnel_plot_data_condition<-funnel_plot_data_condition%>%rename(`Upper limit`="OD95UCL")
+funnel_plot_data_condition<-funnel_plot_data_condition%>%rename(Condition="group")
+
+#set up outlier points - this time there are two limits used 95 and 99.8% limits
+funnel_plot_data_condition$`Lower than expected 95% limits`=
+  ifelse(funnel_plot_data_condition$SHMI<funnel_plot_data_condition$LCL95,funnel_plot_data_condition$SHMI,NA)
+funnel_plot_data_condition$`Higher than expected 95% limits`=
+  ifelse(funnel_plot_data_condition$SHMI>funnel_plot_data_condition$UCL95,funnel_plot_data_condition$SHMI,NA)
+funnel_plot_data_condition$`Lower than expected 99.8% limits`=
+  ifelse(funnel_plot_data_condition$SHMI<funnel_plot_data_condition$LCL99,funnel_plot_data_condition$SHMI,NA)
+funnel_plot_data_condition$`Higher than expected 99.8% limits`=
+  ifelse(funnel_plot_data_condition$SHMI>funnel_plot_data_condition$UCL99,funnel_plot_data_condition$SHMI,NA)
+
+#in chart only want to present point once so set SHMI value for NA where there will be an outlier value
+funnel_plot_data_condition$SHMIPlot=ifelse((is.na(funnel_plot_data_condition$`Lower than expected 95% limits`)
+                                            &is.na(funnel_plot_data_condition$`Higher than expected 95% limits`)
+                                            &is.na(funnel_plot_data_condition$`Lower than expected 99.8% limits`)
+                                            &is.na(funnel_plot_data_condition$`Higher than expected 99.8% limits`))
+                                           ,funnel_plot_data_condition$SHMI,NA)
+
+funnel_plot_data_condition<-funnel_plot_data_condition%>%
+  select(Condition,Observed,`Expected deaths`,SHMI,
+         `Lower than expected 95% limits`, `Higher than expected 95% limits`,
+         `Lower than expected 99.8% limits`,`Higher than expected 99.8% limits`,SHMIPlot)
+
+#add shmi index line 
+funnel_plot_data_condition$index=1
+
+#create column for excess deaths and absolute excess deaths for the marker size
+funnel_plot_data_condition$`Excess deaths`= 
+  funnel_plot_data_condition$Observed - funnel_plot_data_condition$`Expected deaths`
+funnel_plot_data_condition$abs_expected=abs(funnel_plot_data_condition$`Expected deaths`)
+funnel_plot_data_condition$SHMI=round(funnel_plot_data_condition$SHMI,2)
+
+limits<-limits(funnel_plot_data)
+
+#tidy up column names into user friendly labels
+limits<-limits%>%rename(limit_x="number.seq")
+limits<-limits%>%select(limit_x,ul95,ll95,ll998,ul998)
+
+#only plot conditions with more than 5 or less than 5 excess deaths 
+funnel_plot_data_condition<-funnel_plot_data_condition%>% filter(abs_expected>=5)
+
+#order plot points by expected deaths otherwise will plot in condition order
+funnel_plot_data_condition<-sqldf("select * from funnel_plot_data_condition order by `Expected deaths` ")
+#order limits into ascending order
+limits<-sqldf("select * from limits order by ll95 ")
+limits<-limits%>% filter(limit_x>=5)
+funnel_plot_data_condition<-funnel_plot_data_condition%>% filter(`Expected deaths`>=5)
+
+
+#create chart
+funnel_fig_condition<- plot_ly(funnel_plot_data_condition, x = ~`Expected deaths`)
+#SHMI as expected
+funnel_fig_condition <- funnel_fig_condition %>% add_trace(y = ~SHMIPlot, name = 'SHMI',type = "scatter",  
+                                                           mode = 'markers',size = ~abs_expected,
+                                                           marker = list(color='grey', 
+                                                                         line = list(color = 'grey', width =1)),
+                                                           hoverinfo = 'text',text=~paste(Condition, 'SHMI:', SHMI))
+#Index
+funnel_fig_condition <- funnel_fig_condition %>% add_trace(y = ~index, name = 'Index',type = "scatter",
+                                                           mode='lines', line = list(color = 'grey', width = 1, 
+                                                                                     dash = 'dash'),
+                                                           hoverinfo='skip') 
+#SHMI higher than expected95
+funnel_fig_condition <- funnel_fig_condition %>% add_trace(y = ~`Higher than expected 95% limits`, 
+                                                           name = 'Higher than expected 95% limits', 
+                                                           type = "scatter",  mode = 'markers',
+                                                           size = ~abs_expected,
+                                                           marker = list(color='orange',
+                                                                         line = list(color ='orange', width =1)),
+                                                           hoverinfo = 'text',text=~paste(Condition,'SHMI:', SHMI))
+#SHMI lower than expected95
+funnel_fig_condition <- funnel_fig_condition %>% add_trace(y = ~`Lower than expected 95% limits`, 
+                                                           name = 'Lower than expected 95% limits', 
+                                                           type = "scatter",  mode = 'markers',
+                                                           size = ~abs_expected, 
+                                                           marker = list(color='lightgreen',
+                                                                         line = list(color='green', width=1))
+                                                           ,hoverinfo = 'text', 
+                                                           text=~paste(Condition, '<br>SHMI:', SHMI))
+#SHMI higher than expected98
+funnel_fig_condition <- funnel_fig_condition %>% add_trace(y = ~`Higher than expected 99.8% limits`, 
+                                                           name = 'Higher than expected 99.8% limits', 
+                                                           type = "scatter",  mode = 'markers',
+                                                           size = ~abs_expected,
+                                                           marker = list(color='red',
+                                                                         line = list(color = 'red', width =1)),
+                                                           hoverinfo = 'text',
+                                                           text=~paste(Condition, '<br>SHMI:', SHMI))
+#SHMI lower than expected998
+funnel_fig_condition <- funnel_fig_condition %>% add_trace(y = ~`Lower than expected 99.8% limits`, 
+                                                           name = 'Lower than expected 99.8% limits', 
+                                                           type = "scatter",  mode = 'markers',size = ~abs_expected,
+                                                           marker = list(color='green',
+                                                                         line = list(color = 'green', width=1)),
+                                                           hoverinfo = 'text', 
+                                                           text=~paste(Condition, 'SHMI:', SHMI))
+#SHMI limits
+funnel_fig_condition <- funnel_fig_condition %>% add_trace(x= ~limits$limit_x,
+                                                           y = ~limits$ll95, name = '95% limits',
+                                                           type = "scatter", mode='lines', 
+                                                           line = list(color = 'lightgrey', width = 2,
+                                                                       dash = 'dash'),
+                                                           hoverinfo='skip') 
+funnel_fig_condition <- funnel_fig_condition %>% add_trace( x= ~limits$limit_x, 
+                                                            y = ~limits$ul95, name = 'upper',
+                                                            type = "scatter", mode='lines', 
+                                                            line = list(color = 'lightgrey', width = 2,
+                                                                        dash ='dash'),
+                                                            hoverinfo='skip' , showlegend = FALSE) 
+funnel_fig_condition <- funnel_fig_condition %>% add_trace( x= ~limits$limit_x,
+                                                            y = ~limits$ll998, name = '99.8% limits',
+                                                            type = "scatter", mode='lines',
+                                                            line = list(color = 'darkgrey', width = 2),
+                                                            hoverinfo='skip') 
+funnel_fig_condition <- funnel_fig_condition %>% add_trace( x= ~limits$limit_x,
+                                                            y = ~limits$ul998, name = 'upper',
+                                                            type = "scatter", mode='lines', 
+                                                            line = list(color = 'darkgrey', width = 2),
+                                                            hoverinfo='skip' , showlegend = FALSE) 
+#set up theme
+x_theme <- list(  title = "Expected deaths",  showticklabels = TRUE,   tickfont = f10,  showgrid = FALSE)
+y_theme <- list(  title = "SHMI",  showticklabels = TRUE,  tickfont = f10,  showgrid = FALSE)
+#set up title
+title_text=
+  paste0('SHMI by condition using possion limits: ',from_publication_text,' to ',latest_publication_text)
+
+#final chart
+funnel_fig_condition<- funnel_fig_condition %>%layout(title = list(text=title_text,font=list(size=15)),
+                                                      xaxis = x_theme, yaxis = y_theme)
+```
+
+```{r  coding, include=FALSE}
+#create coding charts using ggplot for facet wrap
+
+#bind variables to labels
+coding_str<-cbind(coding_list,coding_shortlabel)
+
+#select data for chart
+coding<-data_shmi%>% 
+    filter((ProviderCode ==params$trust| OrganisationName=="England"| OrganisationName=="ENGLAND") &measure_ %in% coding_list &is.na(SiteType))
+
+#add labels
+coding<-coding %>% left_join( coding_str,by= c("measure_"="coding_list"), copy=TRUE )
+
+#keep coding df as used again later
+coding_chart_data<-coding
+coding_chart_data<-coding_chart_data%>%filter(!is.na(value))
+#tidy up for print friendly
+coding_chart_data<-rename(coding_chart_data,For="Shortname")
+coding_chart_data$value=round(coding_chart_data$value,1)
+coding_chart_data<-rename(coding_chart_data,Value="value")
+coding_chart_data<-rename(coding_chart_data,`12 months to`="PeriodEnd")
+
+```
+
+```{r  pod, include=FALSE}
+#create place of death POD df
+pod<-data_shmi%>% 
+  filter((ProviderCode ==params$trust | OrganisationName=="England"| OrganisationName=="ENGLAND") &measure_ %in% pod_list &is.na(SiteType))
+
+pod<-pod %>% left_join( pod_str,by= c("measure_"="pod_list"), copy=TRUE )
+
+pod<-pod%>%  
+  select(OrganisationName,Shortname, PeriodEnd, pod_label, value)
+
+```
+
+```{r  crude, include=FALSE}
+#create crude rates chart
+
+crude_rates<-data_shmi%>% 
+  filter(measure %in% admissionmethod &is.na(SiteType) & !(ProviderCode %in% c("RWF")) )%>% 
+  select(OrganisationName, Shortname, ProviderCode, PeriodEnd, measure, value)
+
+#what does this do? 
+crude_rates=  sqldf("Select OrganisationName, Shortname, ProviderCode, PeriodEnd, measure, value from crude_rates group by OrganisationName, Shortname, PeriodEnd, measure order by PeriodEnd,OrganisationName")
+
+#pivot wider for creating rate
+crude_rates<- 
+  crude_rates%>% pivot_wider(names_from = measure, values_from = value)
+
+#create rates
+crude_rates$`Elective crude mortality`= round(crude_rates$`Number of elective admissions where a death occurred`/crude_rates$`Number of elective admissions`*100,2)
+
+crude_rates$`Non-elective crude mortality`= round(crude_rates$`Number of non-elective admissions where a death occurred`/crude_rates$`Number of non-elective admissions`*100,2)
+crude_rates$`Crude rate`= round(crude_rates$SHMI_OBSERVED/crude_rates$SHMI_SPELLS*100,2)
+
+# crude_rates$`Elective crude mortality`=ifelse(is.na(crude_rates$`Elective crude mortality`),0,crude_rates$`Elective crude mortality`)
+# crude_rates$`Non-elective crude mortality`=ifelse(is.na(crude_rates$`Non-elective crude mortality`),0,crude_rates$`Non-elective crude mortality`)
+
+#trim dataframe
+crude_rates<-crude_rates%>%  
+  select(OrganisationName,Shortname, ProviderCode, PeriodEnd, `Elective crude mortality`, `Non-elective crude mortality`,`Crude rate`)
+
+
+#order data ready for ploty - 
+crude_rates_longer<- 
+  crude_rates%>% pivot_longer(
+    cols = c(`Elective crude mortality`, `Non-elective crude mortality`,`Crude rate`),
+    names_to = "measure_shortlabel",
+    values_to = "value",
+    values_drop_na = TRUE
+  )
+
+#use sql to order
+crude_rates=sqldf("Select * from crude_rates order by PeriodEnd,OrganisationName")
+
+#create a dataframe for Trust and one for England
+crude_ratesT<-crude_rates[crude_rates$OrganisationName == trustname$OrganisationName, ]
+crude_ratesE<-crude_rates[crude_rates$OrganisationName == "ENGLAND", ]
+crude_ratesE<-filter(crude_ratesE,crude_ratesE$Period>=min(crude_ratesT$PeriodEnd))
+
+#set up axis
+x_theme <- list(  title = "",  showticklabels = TRUE,  tickfont = f10,  showgrid = FALSE)
+y_theme <- list(  title = "Crude death rate per 100 spells",  showticklabels = TRUE,  tickfont = f10,  showgrid = FALSE)
+
+#elective plot
+figCR<- plot_ly(crude_ratesT, x = ~PeriodEnd)
+figCRel <- figCR %>% add_trace(y = ~ `Elective crude mortality`, name = ~Shortname, 
+                               mode='lines', showlegend=FALSE,
+                             line = list(color = 'steelblue', width = 2),hoverinfo = 'text',
+                             text=~paste(Shortname,
+                                         '<br>Elective crude rate:', `Elective crude mortality`,
+                                         '<br>12 months to',format(PeriodEnd,'%B %Y'))) 
+#add trace for England
+figCRel <- figCRel %>% add_trace(x = ~crude_ratesE$PeriodEnd, y = ~ crude_ratesE$`Elective crude mortality`,
+                                 name = 'England',mode='lines',showlegend=FALSE,
+                             line = list(color = 'orange', width = 2),hoverinfo = 'text',
+                             text=~paste('England<br>Elective crude rate:', `Elective crude mortality`,
+                                         '<br>12 months to',format(PeriodEnd,'%B %Y'))) 
+#create nonelective crude plot
+figCRel<- figCRel %>%layout(title= "All                                            Non Elective                                            Elective", xaxis = x_theme, yaxis = y_theme)
+
+#non elective plot
+figCRnel <- figCR %>% add_trace(y = ~ `Non-elective crude mortality`, name = ~Shortname,
+                                mode='lines',showlegend=FALSE,
+                               line = list(color = 'steelblue', width = 2),hoverinfo = 'text',
+                               text=~paste(Shortname,
+                                           '<br>Non-elective crude rate:', `Non-elective crude mortality`,
+                                           '<br>12 months to',format(PeriodEnd,'%B %Y'))) 
+#add trace for England
+figCRnel <- figCRnel %>% add_trace(x = ~crude_ratesE$PeriodEnd, y = ~ crude_ratesE$`Non-elective crude mortality`,
+                                   name = 'England',mode='lines', showlegend=FALSE,
+                                 line = list(color = 'orange', width = 2),hoverinfo = 'text',
+                                 text=~paste('England<br>Non-elective crude rate:', `Non-elective crude mortality`,
+                                             '<br>12 months to',format(PeriodEnd,'%B %Y'))) 
+#create nonelective crude plot
+figCRnel<- figCRnel %>%layout(title= "Non Elective",xaxis = x_theme, yaxis = y_theme)
+
+#all plot
+figCRall <- figCR %>% add_trace(y = ~ `Crude rate`, name = ~Shortname, mode='lines',
+                                line = list(color = 'steelblue', width = 2),hoverinfo = 'text',
+                                text=~paste(Shortname,
+                                            '<br>Crude rate:', `Crude rate`,
+                                            '<br>12 months to',format(PeriodEnd,'%B %Y'))) 
+#add trace for England
+figCRall <- figCRall %>% add_trace(x = ~crude_ratesE$PeriodEnd, y = ~ crude_ratesE$`Crude rate`,
+                                   name = 'England',mode='lines', 
+                                   line = list(color = 'orange', width = 2),hoverinfo = 'text',
+                                   text=~paste('England<br>Crude rate:', `Crude rate`,
+                                               '<br>12 months to',format(PeriodEnd,'%B %Y'))) 
+#create all crude plot
+figCRall<- figCRall %>%layout(xaxis = x_theme, yaxis = y_theme)
+                              #,legend = list(x=0.5, y=0, orientation = 'h'))
+
+```
+
+```{r activity and growth, include=FALSE}
+#counts and growth rates
+
+#create counts using measure list
+counts<-data_shmi%>% 
+  filter((ProviderCode ==params$trust) &measure %in% count_list &is.na(SiteType))
+
+counts<-counts %>% left_join( measures_str,by= c("measure"="measure_list"), copy=TRUE )
+
+counts<-counts%>%  
+  select(OrganisationName, Shortname, PeriodEnd, measure_shortlabel, value)
+
+#create counts of excess deaths
+countsED<-counts%>%  filter(measure_shortlabel=="Expected" | measure_shortlabel=="Excess deaths")
+
+countsED<-countsED%>% pivot_wider(names_from = measure_shortlabel, values_from=value)
+countsED$`More deaths`=ifelse(countsED$`Excess deaths`>0, countsED$`Excess deaths`,NA)
+
+countsED$`Fewer deaths`=ifelse(countsED$`Excess deaths`<=0, countsED$`Excess deaths`,NA)
+countsED=sqldf("Select PeriodEnd,Expected,`More deaths`,`Fewer deaths` from countsED 
+               Group By  PeriodEnd,Expected,`More deaths`,`Fewer deaths` order by 1")
+
+
+#create counts for England
+England_counts<-data_shmi%>% filter((ProviderCode !="ENG") & measure %in% growth_list &is.na(SiteType))%>% 
+  group_by(measure,PeriodEnd)%>%
+   summarise(value=sum(value, na.rm=TRUE))
+
+England_counts$OrganisationName="England"
+
+England_counts$Shortname="England"
+
+
+#create growth from baseline of min(periodend)
+#select variables using growth list
+growth_rates<-data_shmi%>% 
+  filter((ProviderCode ==params$trust) &measure %in% growth_list &is.na(SiteType))%>% 
+  select(OrganisationName,Shortname, PeriodEnd, measure, value)
+
+growth_rates<-rbind(growth_rates,England_counts)
+
+growth_rates$value=ifelse(growth_rates$value==0,NA,growth_rates$value)
+growth_rates<-growth_rates%>% filter(!is.na(value)&value>0)
+growth_from<-growth_rates%>% 
+  group_by(OrganisationName,Shortname, measure)%>% 
+  summarise(PeriodEnd = min(PeriodEnd, na.rm = TRUE))
+
+growth_from<-left_join(growth_from,growth_rates, by=c("OrganisationName"="OrganisationName","Shortname"="Shortname",
+                                                      "measure"="measure","PeriodEnd"="PeriodEnd"))
+
+growth_from<-select(growth_from,-PeriodEnd)
+growth_from<-growth_from%>%rename(value_base="value")
+
+growth_rates<-left_join(growth_rates,growth_from, by=c("OrganisationName"="OrganisationName","Shortname"="Shortname","measure"="measure"))
+
+growth_rates$growth_value=round(growth_rates$value/growth_rates$value_base*100,2)
+
+growth_rates<-growth_rates %>% left_join( growth_str,by= c("measure"="growth_list"), copy=TRUE )
+
+growth_rates_text<- growth_rates%>% select(PeriodEnd, measure, OrganisationName, growth_value)
+growth_rates_text$OrganisationName=ifelse(growth_rates_text$OrganisationName!="England","trust",growth_rates_text$OrganisationName)
+growth_rates_text<- pivot_wider(growth_rates_text,names_from =c(OrganisationName,measure),names_sep = ".",values_from = growth_value)
+growth_rates_latest<-growth_rates_text%>%filter(latest_diag_publication==PeriodEnd)
+```
+
+```{r  charts, include=FALSE}
+#charts for counts
+
+counts_chart_data<-counts%>%rename(PeriodUpTo="PeriodEnd")
+counts_chart_data$month<-month(counts_chart_data$PeriodUpTo)
+counts_chart_data$year<-year(counts_chart_data$PeriodUpTo)
+counts_chart_data$PeriodUpTo<-format(counts_chart_data$PeriodUpTo,"%b %Y")
+levels<-sqldf("select PeriodUpTo from counts_chart_data where measure_shortlabel ='Spells' order by year, month")
+counts_chart_data$PeriodUpTo<-factor(counts_chart_data$PeriodUpTo, 
+                           ordered = TRUE,  levels= levels$PeriodUpTo)
+
+counts_chart<- ggplot(counts_chart_data, aes(x=PeriodUpTo, y=value)) + 
+       geom_bar(stat = 'identity', fill='steelblue') +
+  scale_x_discrete(guide = guide_axis(check.overlap = TRUE))+
+  facet_wrap(~measure_shortlabel,
+             nrow=2, scales="free_y", strip.position = "top")+
+  theme_i7()+ theme(plot.title = element_text(size=8),
+                    axis.title.y = element_blank(),
+                    axis.title.x = element_blank(),
+                    axis.text.x = element_text(size=6,angle=90),
+                    axis.text.y = element_text(size=8),
+                    strip.text = element_text(size=8))
+
+
+counts_chart_mobile<- ggplot(counts_chart_data, aes(x=PeriodUpTo, y=value)) + 
+       geom_bar(stat = 'identity', fill='steelblue') +
+  scale_x_discrete(guide = guide_axis(check.overlap = TRUE))+
+  facet_wrap(~measure_shortlabel,
+             ncol=1, scales="free_y", strip.position = "top")+
+  theme_i7()+ theme(plot.title = element_text(size=8),
+                    axis.title.y = element_blank(),
+                    axis.title.x = element_blank(),
+                    axis.text.x = element_text(size=6,angle=90),
+                    axis.text.y = element_text(size=8),
+                    strip.text = element_text(size=8))
+
+
+#charts for growths
+#make data user friendly
+growth_rates<-rename(growth_rates,For="Shortname")
+growth_rates$growth_value=round(growth_rates$growth_value,1)
+growth_rates<-rename(growth_rates,`Percentage increase`="growth_value")
+growth_rates<-rename(growth_rates,`12 months to`="PeriodEnd")
+
+#use ggplot for facet wrap
+growth_chart<- ggplot(growth_rates, aes(x=`12 months to`, y=`Percentage increase`, color=For)) + 
+  geom_line()+    
+  geom_hline(yintercept = 100, colour="darkgrey",linetype=2)+
+  scale_colour_manual(values=lines_group) +
+  facet_wrap(~growth_labels, nrow=2, scales="free_y", strip.position = "top")+
+  theme_i7()+ theme(plot.title = element_text(size=8),
+                    axis.title.y = element_blank(),
+                    axis.title.x = element_blank(),
+                    axis.text.x = element_text(size=8),
+                    axis.text.y = element_text(size=8),
+                    strip.text = element_text(size=8))
+
+#create chart
+coding_chart<- ggplot(coding_chart_data, aes(x=`12 months to`, y=Value, color=For)) +
+        geom_line()+
+        scale_colour_manual(values=lines_group) +
+        facet_wrap(~coding_shortlabel, nrow=2, scales="free_y", strip.position = "top")+
+  theme_i7()+ theme(plot.title = element_text(size=8),
+                    axis.title.y = element_blank(),
+                    axis.title.x = element_blank(),
+                    axis.text.x = element_text(size=8),
+                    axis.text.y = element_text(size=8),
+                    strip.text = element_text(size=8))
+
+#charts for place of death
+#make data user friendly
+
+pod_chart_data<-pod
+pod_chart_data<-rename(pod_chart_data,For="Shortname")
+pod_chart_data$value=round(pod_chart_data$value,1)
+pod_chart_data<-rename(pod_chart_data,Percentage="value")
+pod_chart_data<-rename(pod_chart_data,`12 months to`="PeriodEnd")
+
+#use ggplot for facet wrap
+pod_chart<- ggplot(pod_chart_data, aes(x=`12 months to`, y=Percentage, color=For)) +
+  geom_line()+   expand_limits(y=0)+     
+  scale_colour_manual(values=lines_group) +
+  facet_wrap(~pod_label, nrow=2, scales="free_y", strip.position = "top")+
+  theme_i7()+ theme(plot.title = element_text(size=8),
+                    axis.title.y = element_blank(),
+                    axis.title.x = element_blank(),
+                    axis.text.x = element_text(size=8),
+                    axis.text.y = element_text(size=8),
+                    strip.text = element_text(size=8),legend.position= "bottom")
+
+```
+
+```{r  tables and titles, include=FALSE}
+#create table and title strings
+
+shmi_table<-shmi%>% filter(PeriodEnd==latest_publication) %>% select(measure,value)
+shmi_table<-shmi_table%>% rename(MeasureID='measure')
+shmi_table$Shortname=trustname$Shortname
+shmi_table<-shmi_table[,c(1,3,2)]
+
+counts_table<-counts%>% filter(PeriodEnd==latest_publication) %>% select(measure_shortlabel,Shortname,value)
+counts_table<-counts_table%>% rename(MeasureID='measure_shortlabel')
+crude_rates_table<- crude_rates_longer%>%filter((OrganisationName ==trustname$OrganisationName) & PeriodEnd==latest_publication) %>% select(measure_shortlabel,Shortname,value)
+crude_rates_table<-crude_rates_table%>% rename(MeasureID='measure_shortlabel')
+
+pod<-pod%>%filter(PeriodEnd==latest_publication) %>% select(pod_label,Shortname,value)
+pod<-pod%>% rename(MeasureID='pod_label')
+pod$MeasureID=ifelse(substr(pod$MeasureID,1,9)=="Deaths in","Deaths_in",pod$MeasureID)
+pod$MeasureID=ifelse(substr(pod$MeasureID,1,9)=="Deaths ou","Deaths_outside",pod$MeasureID)
+pod$MeasureID=ifelse(substr(pod$MeasureID,1,6)=="Spells","Spells_palliative",pod$MeasureID)
+pod$MeasureID=ifelse(substr(pod$MeasureID,1,8)=="Deaths w","Deaths_palliative",pod$MeasureID)
+
+coding<-coding%>% filter(PeriodEnd==latest_publication) %>% select(coding_shortlabel,Shortname,value)
+coding<-coding%>% rename(MeasureID='coding_shortlabel')
+coding$MeasureID=ifelse(substr(coding$MeasureID,1,5)=="Inval","Invalid",coding$MeasureID)
+coding$MeasureID=ifelse(substr(coding$MeasureID,1,5)=="Prima","symptom",coding$MeasureID)
+coding$MeasureID=ifelse(grepl("non-elective",coding$MeasureID),"DepthNonElective",
+                      ifelse(grepl("elective",coding$MeasureID),"DepthElective",coding$MeasureID))
+
+table_data<-rbind(pod,shmi_table,crude_rates_table,counts_table,coding)
+
+table_data$value=round(table_data$value,1)
+
+table_data$Measure <- factor(
+  table_data$MeasureID,
+  ordered = TRUE,
+  levels = c(
+    "SHMI_VALUE",
+    "SHMI_OD_LL",
+    "SHMI_OD_UL",
+    "Spells",
+    "Deaths",
+    "Expected",
+    "Excess deaths",
+    "Crude rate",
+    "Non-elective crude mortality",
+    "Elective crude mortality",
+    "DepthElective",
+    "DepthNonElective",
+    "Invalid",
+    "symptom",
+    "Spells_palliative",
+    "Deaths_palliative",
+    "Deaths_in",
+    "Deaths_outside"
+  ),
+  labels = c(
+    "SHMI",
+    "SHMI lower limit",
+    "SHMI upper limit",
+    "Spells",
+    "Observed deaths",
+    "Expected deaths",
+    "Excess deaths",
+    "Crude death rate per 100 spells",
+    "Non-elective crude mortality per 100 spells",
+    "Elective crude mortality per 100 spells",
+    "Depth of coding - Elective",
+    "Depth of coding - Non Elective",
+    "Invalid primary diagnosis (%)",
+    "Primary diagnosis symptom or sign (%)",
+    "Spells with palliative care (%)",
+    "Deaths with palliative care (%)",
+    "Deaths in hospital (%)",
+    "Deaths outside hospital (%)"
+  )
+)
+
+england_data<-table_data[table_data$Shortname == "England", ]
+england_data<-england_data[,c(1,3)]
+england_data<-pivot_wider(england_data, names_from=MeasureID, values_from=value)
+england_data$Invalid=ifelse(is.na(england_data$Invalid),0,england_data$Invalid)
+
+trust_data<-table_data[table_data$Shortname != "England", ]
+trust_data<-trust_data[,c(1,3)]
+trust_data$value=ifelse(is.na(trust_data$value),0,trust_data$value)
+trust_data<-pivot_wider(trust_data, names_from=MeasureID, values_from=value)
+#trust_data<-trust_data%>% rename_at( 17, ~"Invalid" )
+trust_data$Invalid=ifelse(is.na(trust_data$Invalid),0,trust_data$Invalid)
+
+
+table_data<-table_data %>%  pivot_wider(names_from = Shortname, values_from = value)
+table_data<-arrange(table_data,Measure)
+table_data<-table_data[,c(2:4)]
+
+title=paste0(trustname$OrganisationName)     
+subtitle<-paste0('SHMI: ',from_publication_text,' to ',latest_publication_text, ' is ',round(trustname$value,3),', this ',hi_or_low)
+
+```
+
+```{r ribbons, include=FALSE}
+bar_data<-data_shmi%>%  filter(measure_ == 'Mean_coding_depth_for_elective_admissions' &is.na(SiteType) & PeriodEnd==latest_publication)
+MCD_el_ribbon<- bar.figOB(bar_data)
+MCD_el_ribbon_text<- bar.text(bar_data,'mean coding depth for nonelective admissions')
+bar_data<-data_shmi%>%  filter(measure_ == 'Mean_coding_depth_for_nonelective_admissions' &is.na(SiteType) & PeriodEnd==latest_publication)
+MCD_nel_ribbon<- bar.figOB(bar_data)
+MCD_nel_ribbon_text<- bar.text(bar_data,'mean coding depth for nonelective admissions')
+bar_data<-data_shmi%>%  filter(measure_ == 'Percentage_of_spells_with_an_invalid_primary_diagnosis_code' &is.na(SiteType) & PeriodEnd==latest_publication)
+invalid_ribbon<- bar.figBO(bar_data)
+invalid_ribbon_text<- bar.text(bar_data,'percentage of spells with an invalid primary diagnosis_code')
+bar_data<-data_shmi%>%  filter(measure_ == 'Percentage_of_spells_with_a_primary_diagnosis_which_is_a_symptom_or_sign' &is.na(SiteType) & PeriodEnd==latest_publication)
+symptom_ribbon<- bar.figBO(bar_data)
+symptom_ribbon_text<- bar.text(bar_data,'percentage of spells with a primary diagnosis which is a symptom or sign')
+bar_data<-data_shmi%>% filter(measure_ == 'Percentage_of_deaths_which_occurred_in_hospital' &is.na(SiteType) & PeriodEnd==latest_publication)
+inhosp_ribbon<- bar.figDLD(bar_data)
+inhosp_ribbon_text<- bar.text(bar_data,'percentage of deaths which occurred in hospital')
+bar_data<-data_shmi%>% filter(measure_ == 'Percentage_of_deaths_which_occurred_outside_hospital' &is.na(SiteType) & PeriodEnd==latest_publication)
+outhosp_ribbon<- bar.figDLD(bar_data)
+outhosp_ribbon_text<- bar.text(bar_data,'percentage of deaths which occurred outside hospital')
+bar_data<-data_shmi%>% filter(measure_ == 'Percentage_of_spells_with_either_palliative_care_specialty_or_diagnosis_coding' &is.na(SiteType) & PeriodEnd==latest_publication)
+palli_spells_ribbon<- bar.figDLD(bar_data)
+palli_spells_ribbon_text<- bar.text(bar_data,'percentage of spells with either palliative care specialty or diagnosis_coding')
+bar_data<-data_shmi%>% filter(measure_ == 'Percentage_of_deaths_with_either_palliative_care_specialty_or_diagnosis_coding' &is.na(SiteType) & PeriodEnd==latest_publication)
+palli_deaths_ribbon<- bar.figDLD(bar_data)
+palli_deaths_ribbon_text<- bar.text(bar_data,'percentage of deaths with either palliative care specialty or diagnosis_coding')
+
+bar_data<-crude_rates_longer%>% filter(measure_shortlabel == 'Non-elective crude mortality'  & PeriodEnd==latest_publication)
+nelcrude_ribbon<- bar.figBO(bar_data)
+nelcrude_ribbon_text<- bar.text(bar_data,'non-elective crude mortality per 100 spells')
+
+bar_data<-crude_rates_longer%>% filter(measure_shortlabel == 'Elective crude mortality'  & PeriodEnd==latest_publication)
+elcrude_ribbon<- bar.figBO(bar_data)
+elcrude_ribbon_text<- bar.text(bar_data,'elective crude mortality per 100 spells')
+
+  bar_data<-crude_rates_longer%>% filter(measure_shortlabel == 'Crude rate'  & PeriodEnd==latest_publication)
+crude_ribbon<- bar.figBO(bar_data) 
+crude_ribbon_text<- bar.text(bar_data,'crude mortality rate per 100 spells')   
+
+```
+
+
+Summary  {data-orientation=columns}
+=====================================
+Column {data-width=600}
+-------------------------------------
+###
+<H1> SHMI </H1>
+
+<p><small>The SHMI for `r trustname$Shortname` for the period `r latest_publication_text` is `r round(trustname$value,3)`. This `r hi_or_low` and is `r if(shmi_textlatestSHMI$value>shmi_textlatest$previous_value) {"higher (worse)"} else {"lower (better)"}` than the previous period up to `r format(shmi_textlatestSHMI$previous_period,'%B-%Y') ` when the trust was `r shmi_textlatestSHMI$previous_value` and `r if(shmi_textlatestBAND$previous_value==1) {"higher than expected"} else if(shmi_textlatestBAND$previous_value==2) {"as expected"} else {"lower than expected"}`.
+
+</small></p>
+
+<h2>By condition </h2>
+
+<p><small>The conditions with highest number of excess deaths are <i>`r by_condition_textHI[1,1]`</i>(`r  by_condition_textHI[1,2]` deaths) ,<i> `r by_condition_textHI[2,1]`</i>(`r  by_condition_textHI[2,2]` deaths) and <i>`r by_condition_textHI[3,1]`</i>(`r  by_condition_textHI[3,2]` deaths). Amongst the conditions with least number of excess deaths are <i>`r by_condition_textLO[1,1]`</i>(`r  by_condition_textLO[1,2]` deaths), <i>`r by_condition_textLO[2,1]`</i>(`r  by_condition_textLO[2,2]` deaths) and <i>`r by_condition_textLO[3,1]`</i>(`r  by_condition_textLO[3,2]` deaths). 
+
+`r if(NHSD_outliersTF>=1) {"The following conditions are significantly elevated (compared to 95% over dispersion limits)"} else {"In the NHSD published data there no conditions that are significantly elevated on the Over Dispersion model."}`
+
+</small></p>
+
+<h2>Changes in counts</h2>
+<p><small>
+
+The number of deaths at the trust or within 30days of discharge has `r if(growth_rates_latest$trust.SHMI_OBSERVED+5>growth_rates_latest$England.SHMI_OBSERVED) 
+{paste0("risen faster (", round(growth_rates_latest$trust.SHMI_OBSERVED-100,1),"%) compared to England (",round(growth_rates_latest$England.SHMI_OBSERVED-100,1),"%) since March 2011")} else 
+  if(growth_rates_latest$trust.SHMI_OBSERVED>growth_rates_latest$England.SHMI_OBSERVED-5)
+  {paste0("risen slower (", round(growth_rates_latest$trust.SHMI_OBSERVED-100,1),"%) compared to England (",
+  round(growth_rates_latest$England.SHMI_OBSERVED-100,1),"%) since March 2011")} else   {" have grown at a similar rate to England trends"}`.
+  
+The number of spells at the trust has `r if(growth_rates_latest$trust.SHMI_SPELLS+5>growth_rates_latest$England.SHMI_SPELLS) 
+{paste0("risen faster (", round(growth_rates_latest$trust.SHMI_SPELLS-100,1),"%) compared to England (",round(growth_rates_latest$England.SHMI_SPELLS-100,1),"%) since March 2011")} else 
+  if(growth_rates_latest$trust.SHMI_SPELLS>growth_rates_latest$England.SHMI_SPELLS-5)
+  {paste0("risen slower (", round(growth_rates_latest$trust.SHMI_SPELLS-100,1),"%) compared to England (",
+  growth_rates_latest$England.SHMI_SPELLS-100,"%) since March 2011")} else   {" have grown at a similar rate to England trends"}`.   
+
+</small></p>
+
+<h2>Data quality</h2>
+<p><small>
+
+The trust has a `r if(trust_data$symptom>england_data$symptom) {"higher (worse)"} else { "lower (better)"}` percentage of Primary diagnoses (`r trust_data$symptom`%) that are signs and symptoms (England `r england_data$symptom`%) `r if(trust_data$symptom>england_data$symptom) {". Reducing the use of ‘R’ codes will both provide a better insight into what patients are admitted for as well as having a potentially positive effect on the SHMI and other mortality measures."}` `r symptom_ribbon_text   `
+
+Invalid diagnosis (R69 codes) at `r trust_data$Invalid`% are `r if(trust_data$Invalid>england_data$Invalid) {"higher"} else { "lower"}` than England (`r england_data$Invalid`%). `r invalid_ribbon_text`
+
+Coding depth for electives is `r trust_data$DepthElective`, which is `r if(trust_data$DepthElective>england_data$DepthElective) {"higher"} else { "lower"}` compared to England (`r england_data$DepthElective `), and for non-electives `r trust_data$DepthNonElective ` this is `r if(trust_data$DepthNonElective>england_data$DepthNonElective) {"higher"} else { "lower"}` than England (`r england_data$DepthNonElective`). `r MCD_el_ribbon_text ` `r MCD_nel_ribbon_text`  Coding depth is associated with the Charlson score that adjusts for ‘severity’ of a patient’s condition. Capturing co-mordities will both provide a better insight into the complexity of patients who are admitted as well as having a potentially positive effect on the SHMI and other mortality measures. 
+</small></p>
+
+<h2>End of life</h2>
+<p><small>
+`r trust_data$Deaths_in`% Patients died in hospital, this was `r if(trust_data$Deaths_in>england_data$Deaths_in) {"higher"} else { "lower"}` than compared to England (`r england_data$Deaths_in`%). `r inhosp_ribbon_text`
+
+Of those patients who died `r trust_data$Deaths_palliative`% had a palliative care code in their last spell, this is `r if(trust_data$Deaths_palliative>england_data$Deaths_palliative) {"higher"} else { "lower"}` than  England (`r england_data$Deaths_palliative`%). `r palli_deaths_ribbon_text` For all spells, `r trust_data$Spells_palliative`% had a palliative care code, this is `r if(trust_data$Spells_palliative>england_data$Spells_palliative) {"higher"} else { "lower"}` than England (`r england_data$Spells_palliative`%).  `r palli_spells_ribbon_text`
+</small></p>
+
+Column {data-width=400}
+-------------------------------------
+### Tables, period up to `r latest_publication_text`
+
+```{r table , echo=FALSE, results='asis'}
+kbl_shmi<-filter(table_data,table_data$Measure %in% c("SHMI", "SHMI lower limit","SHMI upper limit"))
+kbl_shmi %>%
+  kbl() %>%
+  kable_styling(font_size = 12)
+kbl_counts<-filter(table_data,table_data$Measure %in% c("Spells", 
+                                    "Observed deaths","Expected deaths",
+                                    "Excess deaths"))
+kbl_counts %>%
+  kbl() %>%
+  kable_styling(font_size = 12)
+kbl_rates<-filter(table_data,table_data$Measure %in% c("Crude death rate per 100 spells",
+                                    "Non-elective crude mortality per 100 spells",
+                                    "Elective crude mortality per 100 spells"))
+kbl_rates %>%
+  kbl() %>%
+  kable_styling(font_size = 12)
+kbl_coding<-filter(table_data,table_data$Measure %in% c("Depth of coding - Elective",
+                                    "Depth of coding - Non Elective","Invalid primary diagnosis (%)",
+                                    "Primary diagnosis symptom or sign (%)"))
+kbl_coding %>%
+  kbl() %>%
+  kable_styling(font_size = 12)
+kbl_pod<-filter(table_data,table_data$Measure %in% c( "Spells with palliative care (%)",
+                                    "Deaths with palliative care (%)","Deaths in hospital (%)",
+                                    "Deaths outside hospital (%)"))
+kbl_pod %>%
+  kbl() %>%
+  kable_styling(font_size = 12)
+```
+
+Overview {data-orientation=rows}
+=====================================  
+
+Row
+-------------------------------------
+### 'r subtitle`
+
+```{r valuebox}
+valueBox(title,
+         color = ifelse(hi_or_low ==1 , "warning", "primary"))
+```
+
+Row
+-------------------------------------
+### SHMI {data-height=400 .no-mobile}
+
+```{r shmi_chart, echo=FALSE}
+
+fig %>%  config(displaylogo = FALSE, modeBarButtonsToRemove = c("zoomIn2d","toImage","zoom2d", "zoomOut2d","pan2d","select2d","lasso2d","drawclosedpath","hoverCompareCartesian","hoverClosestCartesian","toggleSpikelines" ))
+
+```
+
+### SHMI {data-height=400 data-width=300 .mobile}
+
+```{r shmi_chart  mobile, echo=FALSE}
+
+fig %>%  config(displaylogo = FALSE, modeBarButtonsToRemove = c("zoomIn2d","toImage","zoom2d", "zoomOut2d","pan2d","select2d","lasso2d","drawclosedpath","hoverCompareCartesian","hoverClosestCartesian","toggleSpikelines" ))
+
+```
+
+### Excess deaths by condition, period up to `r latest_publication_text`. Click to see [Conditions over time]  {data-height=400 .no-mobile}
+```{r Excess_deaths cht}
+diag_excess_fig %>% 
+  config(displayModeBar = F)
+```
+
+### Excess deaths by condition, period up to `r latest_publication_text`. Click to see [Conditions over time]  {data-height=400 data-width=300 .mobile}
+```{r Excess_deaths cht  mobile}
+diag_excess_fig %>% 
+  config(displayModeBar = F)
+```
+
+### All trusts {.mobile}
+
+```{r funnel_chart  mobile}
+
+funnel_chartfig %>%  config(displaylogo = FALSE, modeBarButtonsToRemove = c("zoomIn2d","toImage","zoom2d", "zoomOut2d","pan2d","select2d","lasso2d","drawclosedpath","hoverCompareCartesian","hoverClosestCartesian","toggleSpikelines" ))
+
+``` 
+
+### Crude death rates { .mobile}
+
+```{r crude rate charts  mobile}
+ sub<-subplot(figCRall,figCRnel,figCRel,nrows=3)
+ sub%>%  config(displaylogo = FALSE, modeBarButtonsToRemove = c("zoomIn2d","toImage","zoom2d", "zoomOut2d","pan2d","select2d","lasso2d","drawclosedpath","hoverCompareCartesian","hoverClosestCartesian","toggleSpikelines" ))
+ 
+```
+
+### Activity { .mobile}
+
+```{r count charts mobile}
+fig <- ggplotly(counts_chart_mobile)
+fig  %>%  config(displaylogo = FALSE, modeBarButtonsToRemove = c("zoomIn2d","toImage","zoom2d", "zoomOut2d","pan2d","select2d","lasso2d","drawclosedpath","hoverCompareCartesian","hoverClosestCartesian","toggleSpikelines" ))
+```
+
+
+Row {.tabset .tabset-fade}
+-------------------------------------
+### All trusts {data-height=400 .no-mobile}
+
+```{r funnel_chart}
+
+funnel_chartfig %>%  config(displaylogo = FALSE, modeBarButtonsToRemove = c("zoomIn2d","toImage","zoom2d", "zoomOut2d","pan2d","select2d","lasso2d","drawclosedpath","hoverCompareCartesian","hoverClosestCartesian","toggleSpikelines" ))
+
+```   
+
+
+### Crude death rates {data-height=400 .no-mobile}
+
+```{r crude rate charts}
+ sub<-subplot(figCRall,figCRnel,figCRel,nrows=1, shareY= TRUE)
+ sub%>%  config(displaylogo = FALSE, modeBarButtonsToRemove = c("zoomIn2d","toImage","zoom2d", "zoomOut2d","pan2d","select2d","lasso2d","drawclosedpath","hoverCompareCartesian","hoverClosestCartesian","toggleSpikelines" ))
+ 
+```
+
+
+### Activity {data-height=400 .no-mobile}
+
+```{r count charts}
+fig <- ggplotly(counts_chart)
+fig  %>%  config(displaylogo = FALSE, modeBarButtonsToRemove = c("zoomIn2d","toImage","zoom2d", "zoomOut2d","pan2d","select2d","lasso2d","drawclosedpath","hoverCompareCartesian","hoverClosestCartesian","toggleSpikelines" ))
+```
+
+
+### Relative activity changes {data-height=400 .no-mobile}
+
+```{r activity charts}
+fig <- ggplotly(growth_chart)
+fig %>%  config(displaylogo = FALSE, modeBarButtonsToRemove = c("zoomIn2d","toImage","zoom2d", "zoomOut2d","pan2d","select2d","lasso2d","drawclosedpath","hoverCompareCartesian","hoverClosestCartesian","toggleSpikelines" ))
+```
+
+### Conditions {data-height=400 .no-mobile}
+
+```{r Condition funnel_chart,echo=FALSE}
+funnel_fig_condition %>%  config(displaylogo = FALSE, modeBarButtonsToRemove = c("zoomIn2d","toImage","zoom2d", "zoomOut2d","pan2d","select2d","lasso2d","drawclosedpath","hoverCompareCartesian","hoverClosestCartesian","toggleSpikelines" ))
+```   
+
+### Coding  {data-height=400 .no-mobile}
+
+```{r coding tab}
+fig <- ggplotly(coding_chart)
+fig %>%  config(displayModeBar = F)
+```
+ 
+### Palliative care  {data-height=400 .no-mobile}
+
+```{r POD tab}
+fig <- ggplotly(pod_chart)
+fig %>%  config(displayModeBar = F)
+```
+ 
+### Site  {data-height=400 .no-mobile}
+
+```{r site tab}
+fig <- ggplotly(shmi_site_chart)
+fig %>%  config(displaylogo = FALSE, modeBarButtonsToRemove = c("zoomIn2d","toImage","zoom2d", "zoomOut2d","pan2d","select2d","lasso2d","drawclosedpath","hoverCompareCartesian","hoverClosestCartesian","toggleSpikelines" ))
+```
+
+
+Conditions over time {data-orientation=rows}
+=====================================     
+   
+Row 
+-------------------------------------
+### Changes in SHMI and excess deaths over time. The <b>darker</b> the colour the larger the SHMI, the BIGGER the circle the more excess deaths.[Overview]
+
+```{r}
+condition_over_time_fig %>%  config(displaylogo = FALSE, modeBarButtonsToRemove = c("zoomIn2d","toImage","zoom2d", "zoomOut2d","pan2d","select2d","lasso2d","drawclosedpath","hoverCompareCartesian","hoverClosestCartesian","toggleSpikelines" ))
+```
+
+Ribbons {data-orientation=columns}
+=====================================     
+<p><small>The charts show trusts ranked from the lowest to highest for the period `r paste0(from_publication_text,' to ',latest_publication_text)`. Where it is possible to make a distinction between levels of good or poor performance, this is highlighted with red being poor and blue being good. Where it is not possible to say high is good or bad, the ribbon highlights the highest and lowest in darker shades.  The bands are the lowest tenth, 20th centile, 40th centile, mid range (40-60 centiles), 80%th centile, 90th centile and the highest tenth of trusts. 
+</small>  </p>
+
+column
+-------------------------------------
+
+### Depth of coding: elective {.no-padding}
+
+```{r depth_el_ribbon}
+MCD_el_ribbon%>% 
+  config(displayModeBar = F)
+
+```
+
+### Depth of coding: non-elective {.no-padding}
+
+```{r depth_nel_ribbon }
+
+MCD_nel_ribbon %>% 
+  config(displayModeBar = F)
+
+```
+
+### Coding: invalid {.no-padding}
+
+```{r invalid_ribbon}
+invalid_ribbon %>% 
+  config(displayModeBar = F)
+
+```
+
+### Coding: signs and symptoms
+
+```{r symptom_ribbon}
+symptom_ribbon %>% 
+  config(displayModeBar = F)
+
+```
+
+### Depth of coding: elective {data-height=200 .mobile}
+
+```{r depth_el_ribbon_mobile}
+MCD_el_ribbon%>% 
+  config(displayModeBar = F)
+```
+
+### Depth of coding: non-elective {data-height=200 .mobile}
+
+```{r depth_nel_ribbon_mobile }
+MCD_nel_ribbon %>% 
+  config(displayModeBar = F)
+```
+
+### Coding: invalid {data-height=200 .mobile}
+
+```{r invalid_ribbon_mobile}
+invalid_ribbon %>% 
+  config(displayModeBar = F)
+```
+
+### Coding: signs and symptoms {data-height=200 .mobile}
+
+```{r symptom_ribbon_mobile}
+symptom_ribbon %>% 
+  config(displayModeBar = F)
+```
+
+column
+-------------------------------------
+
+### Place of death: in hospital
+
+```{r inhosp_ribbon}
+
+inhosp_ribbon%>% 
+  config(displayModeBar = F)
+
+```
+
+### Palliative care- deaths
+
+```{r palli_deaths_ribbon}
+palli_deaths_ribbon%>% 
+  config(displayModeBar = F)
+```
+
+### Palliative care- Spells
+
+```{r palli_spells_ribbon}
+palli_spells_ribbon%>% 
+  config(displayModeBar = F)
+
+```
+
+### Place of death: in hospital {data-height=200 .mobile}
+
+```{r inhosp_ribbon_mobile}
+inhosp_ribbon%>% 
+  config(displayModeBar = F)
+```
+ 
+### Palliative care- deaths {data-height=200 .mobile}
+
+```{r palli_deaths_ribbon_mobile}
+palli_deaths_ribbon%>% 
+  config(displayModeBar = F)
+```
+
+### Palliative care- Spells {data-height=200 .mobile}
+
+```{r palli_spells_ribbon_mobile}
+palli_spells_ribbon%>% 
+  config(displayModeBar = F)
+```
+
+column
+-------------------------------------
+
+### Crude rate of deaths: all
+
+```{r crude_ribbon}
+  crude_ribbon %>% 
+  config(displayModeBar = F)
+```
+
+### Crude rate of deaths: Non-elective
+
+```{r nelcrude_ribbon}
+nelcrude_ribbon%>% 
+  config(displayModeBar = F)
+```
+
+### Crude rate of deaths: elective
+
+```{r elcrude_ribbon}
+elcrude_ribbon%>% 
+  config(displayModeBar = F)
+```
+
+### Crude rate of deaths: all {data-height=200 .mobile}
+
+```{r crude_ribbon_mobile}
+  crude_ribbon %>% 
+  config(displayModeBar = F)
+```
+
+### Crude rate of deaths: Non-elective {data-height=200 .mobile}
+
+```{r nelcrude_ribbon_mobile}
+nelcrude_ribbon%>% 
+  config(displayModeBar = F)
+```
+
+### Crude rate of deaths: elective {data-height=200 .mobile}
+
+```{r elcrude_ribbon_mobile}
+elcrude_ribbon%>% 
+  config(displayModeBar = F)
+```
+
+Manual {data-orientation=rows}
+=====================================
+
+Row
+-------------------------------------
+### SHMI
+
+Information from NHS Digital, licenced under the current version of the Open Government Licence Source: https://digital.nhs.uk/data-and-information/publications/clinical-indicators/shmi
+
+The SHMI is the ratio between the actual number of patients who die following hospitalisation at the trust and the number that would be expected to die on the basis of average England figures, given the characteristics of the patients treated there. It includes deaths which occurred in hospital and deaths which occurred outside of hospital within 30 days (inclusive) of discharge. Deaths related to COVID-19 are excluded from the SHMI.
+
+The SHMI gives an indication for each non-specialist acute NHS trust in England whether the observed number of deaths within 30 days of discharge from hospital was 'higher than expected' (SHMI banding=1), 'as expected' (SHMI banding=2) or 'lower than expected' (SHMI banding=3) when compared to the national baseline. 
+ 
+(Source: NHS Digital - https://digital.nhs.uk/data-and-information/publications/clinical-indicators/shmi/current/shmi-data)
+
+### Excess deaths by condition
+
+The conditions with the highest excess deaths are shown.  Where there are more deaths than expected (excess deaths) these are shown in orange, and where there are fewer deaths than expected these are shown in green. The length of the bar is the total deaths (expected + excess deaths).  
+
+Conditions with 5 or fewer excess deaths are not shown to ease reading.  All conditions are listed in the [Conditions over time] page. 
+
+Row {.tabset}
+-------------------------------------
+### All trusts
+
+The SHMI is not a measure of quality of care. A higher/lower than expected number of deaths should not immediately be interpreted as indicating poor/good performance and instead should be viewed as a ‘smoke alarm’ which requires further investigation.
+
+The SHMI cannot be used to directly compare mortality outcomes between trusts and it is inappropriate to rank trusts by their SHMI. Instead, the SHMI banding can be used to compare mortality outcomes to the national baseline. If two trusts have the same SHMI banding, it cannot be concluded that the trust with the lower SHMI value has better mortality outcomes
+
+NHS Digital's interpretation guidance 
+https://files.digital.nhs.uk/96/EE14DB/SHMI%20interpretation%20guidance.pdf
+
+<u> Observed Deaths:</u>
+This is a count of the number of deaths which occurred in hospital or within 30 days of discharge for each trust. Deaths related to COVID-19 are excluded from the SHMI. If the patient is treated by another trust within those 30 days their death will only be attributed to the last non-specialist acute NHS trust to treat them. Specialist trusts, mental health trusts,  community trusts and independent sector providers are excluded from the SHMI. A full list of excluded NHS trusts can be found in Appendix C of the SHMI methodology specification document, which is available on the NHS Digital website at http://digital.nhs.uk/SHMI.
+
+<u> Expected Deaths: </u>
+The risk of the patient dying in hospital or within 30 days of discharge is estimated from statistical models based on the following variables:
+• the condition the patient is in hospital for
+• other underlying conditions the patient suffers from
+• the age of the patient
+• the sex of the patient
+• the method of admission to hospital (elective/non-elective/unknown)
+• the month of admission
+• the birthweight of the patient (perinatal diagnosis groups only)
+The expected number of deaths is obtained by summing the estimated risks for all finished provider spells for a trust.
+The statistical models are derived using thirty-six months of data from trusts throughout England. The final twelve months of this period are used to calculate the SHMI for each individual trust. Details of the dataset used in the SHMI calculation can be found in the SHMI publication timetable which is available on the NHS Digital website at http://digital.nhs.uk/SHMI.
+
+(Source: NHS Digital https://files.digital.nhs.uk/DB/48BBE9/SHMI%20FAQs.pdf)
+
+### Activity
+
+<u>Crude mortality</u><br> 
+Number of patients dying in hospital or within 30 days of discharge divided by the number of spells.
+
+England is shown as a guide but due to variations in case mix you cannot draw any statistical comparison between the two.
+
+<u>Deaths for non-elective admissions</u><br>
+This indicator presents crude percentage rates of non-elective admissions where a death occurred either in-hospital or within 30 days (inclusive) of being discharged from hospital. 
+
+An adjustment is made for admission method in the SHMI methodology because crude mortality rates for elective admissions tend to be lower than crude mortality rates for non-elective admissions.
+
+Counts are rounded to 5 in line with HES disclosure control. 
+
+To learn more go to:
+ https://files.digital.nhs.uk/65/85E399/SHMI%20contextual%20indicator%20specifications.zip
+
+<u>Deaths for elective admissions</u><br>
+This indicator presents crude percentage rates of elective admissions where a death occurred either in-hospital or within 30 days (inclusive) of being discharged from hospital.. 
+
+An adjustment is made for admission method in the SHMI methodology because crude mortality rates for elective admissions tend to be lower than crude mortality rates for non-elective admissions.
+
+Counts are rounded to 5 in line with HES disclosure control. 
+
+To learn more go to: 
+ https://files.digital.nhs.uk/65/85E399/SHMI%20contextual%20indicator%20specifications.zip
+ 
+<U>Spells </u><br>Spells 
+Number of spells in a 12 month period. 
+
+More detail on how spells are constructed can be found here https://files.digital.nhs.uk/92/4DEC97/Provider%20spells%20methodology.zip
+ 
+<U>Observed and expected  </u><br>
+Count of deaths in hospital or within 30 days of discharge, and the expected deaths as produced by the SHMI model. 
+The difference between the observed and expected is highlighted.
+
+Counts are rounded to 5 in line with HES disclosure control. 
+
+To learn more go to:
+https://files.digital.nhs.uk/02/3013C8/SHMI%20specification%20v1.32.pdf
+
+### Conditions
+
+<U>SHMI by diagnosis condition </u><br>
+The SHMI is composed of 142 different diagnosis groups   For a subset of diagnosis groups, an indication of whether the observed number of deaths within 30 days of discharge from hospital was 'higher than expected', 'as expected' or 'lower than expected' when compared to the national baseline is also provided. It is possible for conditions to have a statistically high or low SHMI, but if it is not in the subset it is not possible to identify these,  
+
+Due to the suppression applied by NHS Digital, the SHMI values may differ slightly compared to those published. The approach here has been to comprimse on precision and present a wider range of conditions.  
+
+To learn more go to: 
+https://files.digital.nhs.uk/02/3013C8/SHMI%20specification%20v1.32.pdf
+
+
+<u>Excess deaths by condition </u><br>
+
+This chart presents the changes in the SHMI and excess deaths over time.  The larger the circle the greater the excess deaths, the darker the colour the higher the SHMI.  The SHMI in this presentation is capped to 3 as small increases in the observed deaths can lead to large increases in conditions with low mortality, leading to exceptionally high and meaningless SHMI.  Excess deaths are rounded to 5 in line with HES disclosure control. 
+
+
+### Coding
+<U>Signs and symptoms</u><br>
+This indicator presents the percentage of finished provider spells with a primary diagnosis which is a symptom or sign (identified by ICD-10 codes beginning with the letter ‘R’).
+
+A high percentage  may indicate problems with data quality or timely diagnosis of patients, but may also reflect the case-mix of patients or the service model of the trust (e.g. a high level of admissions to acute admissions wards for assessment and stabilisation).
+
+<U>Depth of coding</u><br>
+This indicator presents the mean number of secondary diagnosis codes per finished provider spell (mean depth of coding) by elective and non-elective admission method, for each trust. A higher mean depth of coding may indicate a higher proportion of patients with multiple conditions and/or comorbidities, but may also be due to differences in coding practices between trusts.
+
+To learn more go to: 
+ https://files.digital.nhs.uk/65/85E399/SHMI%20contextual%20indicator%20specifications.zip
+
+To learn more go to:
+ https://files.digital.nhs.uk/65/85E399/SHMI%20contextual%20indicator%20specifications.zip
+ 
+### Palliative care
+
+<U>Palliative care coding</u><br>
+This indicator presents crude percentage rates of deaths reported in the SHMI with palliative care coding at either diagnosis or treatment specialty level.
+
+Note that the SHMI makes no adjustments for patients who are recorded as receiving palliative care. This is because there is considerable variation between trusts in the way that palliative care codes are used.
+
+To learn more go to: 
+ https://files.digital.nhs.uk/65/85E399/SHMI%20contextual%20indicator%20specifications.zip    
+ 
+<U> Place of death</u><br>
+
+This indicator presents crude percentage rates of deaths reported in the SHMI which occurred in hospital and deaths reported in the SHMI which occurred outside hospital within 30 days (inclusive) of discharge.
+
+To learn more go to: 
+ https://files.digital.nhs.uk/65/85E399/SHMI%20contextual%20indicator%20specifications.zip
+
+### Site
+
+Trusts may be located at multiple sites and may be responsible for one or more hospitals. 
+
+The SHMI is calculated at the level of the provider spell, which is a continuous period of time spent as a patient within a single trust (provider). A spell may be composed of more than one episode (a single period of care under one consultant). If a patient is moved between hospitals or sites within the same trust, the provider spell continues. Most spells consist of a single episode and so there is no complication when presenting SHMI data at site level because the entire provider spell occurred at a single site. However, spells consisting of multiple episodes may have occurred over multiple sites and only one of these sites can be associated with the spell. This has been chosen to be the site of the first episode in the spell. This may result in hospital deaths being attributed to a site other than the one in which they occurred, with an impact on the SHMI values presented for the sites concerned. This impact is likely to be greater for sites within trusts showing higher percentages for this contextual indicator.
