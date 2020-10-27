@@ -5,7 +5,7 @@ output:
     theme: cosmo
     orientation: rows
 params: 
-    trust: RQW
+    trust: RAJ
     
 logo: ../ext/i7white08.png
 ---
@@ -21,6 +21,7 @@ library(plotly)       #charts
 library(FunnelPlotR)  #funnel plots
 library(sqldf)        #sql functionality
 library(kableExtra)   #table format
+library(ggiraph)
 ```
 
 ```{r setup, include=FALSE}
@@ -288,7 +289,7 @@ diag_excess_fig <-
 #create bubble chart for conditions over time
 
 #to simplify presentation only include conditions with obs and expected deaths >5
-conditions<-data_diagnostic %>% filter(ProviderCode==params$trust & Observed_Diagnosis>5 & (Expected_Diagnosis<-5|Expected_Diagnosis>5))%>% 
+conditions<-data_diagnostic %>% filter(ProviderCode==params$trust & Observed_Diagnosis>10 & (Expected_Diagnosis<-10|Expected_Diagnosis>10))%>% 
   select(one_word, PeriodEnd, SHMI_Diagnosis_excess, SHMI_Diagnosis,Observed_Diagnosis,Expected_Diagnosis) 
 
 #to order chart need to rank by latest data
@@ -587,6 +588,7 @@ shmi_site_chart<- ggplot(shmi_site, aes(x=`12 months to`, y=Value,colour=Measure
 shmi_site_chart<-shmi_site_chart+
   geom_point(data=below_pts_site,aes(x=PeriodEnd,y=value),colour="green")+
   geom_point(data=above_pts_site,aes(x=PeriodEnd,y=value),colour="red")
+
 
 ```
 
@@ -1432,7 +1434,7 @@ fig %>%  config(displaylogo = FALSE, modeBarButtonsToRemove = c("zoomIn2d","toIm
 
 ```
 
-### SHMI {data-height=400 data-width=300 .mobile}
+### SHMI {data-height=400 data-width=200 .mobile}
 
 ```{r shmi_chart  mobile, echo=FALSE}
 
@@ -1446,7 +1448,7 @@ diag_excess_fig %>%
   config(displayModeBar = F)
 ```
 
-### Excess deaths by condition, period up to `r latest_publication_text`. Click to see [Conditions over time]  {data-height=400 data-width=300 .mobile}
+### Excess deaths by condition, period up to `r latest_publication_text`. Click to see [Conditions over time]  {data-height=400 data-width=200 .mobile}
 ```{r Excess_deaths cht  mobile}
 diag_excess_fig %>% 
   config(displayModeBar = F)
@@ -1538,13 +1540,24 @@ fig <- ggplotly(shmi_site_chart)
 fig %>%  config(displaylogo = FALSE, modeBarButtonsToRemove = c("zoomIn2d","toImage","zoom2d", "zoomOut2d","pan2d","select2d","lasso2d","drawclosedpath","hoverCompareCartesian","hoverClosestCartesian","toggleSpikelines" ))
 ```
 
+### Site2  {data-height=400  .no-mobile}
+
+```{r site tab ggiraph}
+tooltip_css <- "padding:10px;border-radius:5px;"
+my_gg <- shmi_site_chart + geom_line_interactive(aes(tooltip = paste0(Measure,": ",Value)))
+
+girafe(ggobj = my_gg, width_svg = 8, height_svg = 4,
+  options = list(opts_tooltip(use_fill = TRUE),
+                  opts_sizing(rescale = TRUE, width = 1 )) )
+
+```
 
 Conditions over time {data-orientation=rows}
 =====================================     
    
 Row 
 -------------------------------------
-### Changes in SHMI and excess deaths over time. The <b>darker</b> the colour the larger the SHMI, the BIGGER the circle the more excess deaths.[Overview]
+### Changes in SHMI and excess deaths over time. The <b>darker</b> the colour the larger the SHMI, the BIGGER the circle the more excess deaths. [Overview]
 
 ```{r}
 condition_over_time_fig %>%  config(displaylogo = FALSE, modeBarButtonsToRemove = c("zoomIn2d","toImage","zoom2d", "zoomOut2d","pan2d","select2d","lasso2d","drawclosedpath","hoverCompareCartesian","hoverClosestCartesian","toggleSpikelines" ))
