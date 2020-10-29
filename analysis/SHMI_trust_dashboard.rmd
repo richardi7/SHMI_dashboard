@@ -5,7 +5,7 @@ output:
     theme: cosmo
     orientation: rows
 params: 
-    trust: RAJ
+    trust: RD8
     
 logo: ../ext/i7white08.png
 ---
@@ -1187,73 +1187,108 @@ pod_chart<- ggplot(pod_chart_data, aes(x=`12 months to`, y=Percentage, color=For
 
 ```{r  tables and titles, include=FALSE}
 #create table and title strings
+value_title=trustname$Shortname
 
 shmi_table<-shmi%>% filter(PeriodEnd==latest_publication) %>% select(measure,value)
-shmi_table<-shmi_table%>% rename(MeasureID='measure')
 shmi_table$Shortname=trustname$Shortname
+shmi_table<-shmi_table%>% rename(Measure='measure')
 shmi_table<-shmi_table[,c(1,3,2)]
+shmi_table$value=round(shmi_table$value,3)
 
-counts_table<-counts%>% filter(PeriodEnd==latest_publication) %>% select(measure_shortlabel,Shortname,value)
-counts_table<-counts_table%>% rename(MeasureID='measure_shortlabel')
-crude_rates_table<- crude_rates_longer%>%filter((OrganisationName ==trustname$OrganisationName) & PeriodEnd==latest_publication) %>% select(measure_shortlabel,Shortname,value)
-crude_rates_table<-crude_rates_table%>% rename(MeasureID='measure_shortlabel')
+shmi_table<-select(shmi_table,Measure,value)
+names(shmi_table)[names(shmi_table)=="value"] <-value_title
 
-pod<-pod%>%filter(PeriodEnd==latest_publication) %>% select(pod_label,Shortname,value)
-pod<-pod%>% rename(MeasureID='pod_label')
-pod$MeasureID=ifelse(substr(pod$MeasureID,1,9)=="Deaths in","Deaths_in",pod$MeasureID)
-pod$MeasureID=ifelse(substr(pod$MeasureID,1,9)=="Deaths ou","Deaths_outside",pod$MeasureID)
-pod$MeasureID=ifelse(substr(pod$MeasureID,1,6)=="Spells","Spells_palliative",pod$MeasureID)
-pod$MeasureID=ifelse(substr(pod$MeasureID,1,8)=="Deaths w","Deaths_palliative",pod$MeasureID)
+counts_table<-counts%>% filter(PeriodEnd==latest_publication) %>% select(measure_shortlabel,value)
+counts_table<-counts_table%>% rename(Measure='measure_shortlabel')
+names(counts_table)[names(counts_table)=="value"] <-value_title
 
-coding<-coding%>% filter(PeriodEnd==latest_publication) %>% select(coding_shortlabel,Shortname,value)
-coding<-coding%>% rename(MeasureID='coding_shortlabel')
-coding$MeasureID=ifelse(substr(coding$MeasureID,1,5)=="Inval","Invalid",coding$MeasureID)
-coding$MeasureID=ifelse(substr(coding$MeasureID,1,5)=="Prima","symptom",coding$MeasureID)
-coding$MeasureID=ifelse(grepl("non-elective",coding$MeasureID),"DepthNonElective",
-                      ifelse(grepl("elective",coding$MeasureID),"DepthElective",coding$MeasureID))
+crude_rates_table<- crude_rates_longer%>%
+  filter((OrganisationName ==trustname$OrganisationName) & PeriodEnd==latest_publication) %>%
+  select(measure_shortlabel,value)
+crude_rates_table<-crude_rates_table%>% rename(Measure='measure_shortlabel')
+crude_rates_table<-select(crude_rates_table,Measure,value)
+names(crude_rates_table)[names(crude_rates_table)=="value"] <-value_title
 
-table_data<-rbind(pod,shmi_table,crude_rates_table,counts_table,coding)
+pod_table<-pod%>%filter(PeriodEnd==latest_publication) %>% select(pod_label,Shortname,value)
+pod_table<-pod_table%>% rename(Measure='pod_label')
+pod_table$Measure=ifelse(substr(pod_table$Measure,1,9)=="Deaths in","Deaths_in",pod_table$Measure)
+pod_table$Measure=ifelse(substr(pod_table$Measure,1,9)=="Deaths ou","Deaths_outside",pod_table$Measure)
+pod_table$Measure=ifelse(substr(pod_table$Measure,1,6)=="Spells","Spells_palliative",pod_table$Measure)
+pod_table$Measure=ifelse(substr(pod_table$Measure,1,8)=="Deaths w","Deaths_palliative",pod_table$Measure)
+pod_table<-select(pod_table,Measure,Shortname,value)
+pod_table$value=round(pod_table$value,1)
+pod_table<-pod_table %>%  pivot_wider(names_from = Shortname, values_from = value)
 
-table_data$value=round(table_data$value,1)
+coding_table<-coding%>% filter(PeriodEnd==latest_publication) %>% select(coding_shortlabel,Shortname,value)
+coding_table<-coding_table%>% rename(Measure='coding_shortlabel')
+coding_table$Measure=ifelse(substr(coding_table$Measure,1,5)=="Inval","Invalid",coding_table$Measure)
+coding_table$Measure=ifelse(substr(coding_table$Measure,1,5)=="Prima","symptom",coding_table$Measure)
+coding_table$Measure=ifelse(grepl("non-elective",coding_table$Measure),"DepthNonElective",
+                      ifelse(grepl("elective",coding_table$Measure),"DepthElective",coding_table$Measure))
 
-table_data$Measure <- factor(
-  table_data$MeasureID,
+coding_table<-select(coding_table,Measure,Shortname,value)
+coding_table$value=round(coding_table$value,1)
+coding_table<-coding_table %>%  pivot_wider(names_from = Shortname, values_from = value)
+
+
+crude_ratesE_latest<-crude_ratesE%>% filter(PeriodEnd==latest_publication)%>%
+  select(`Elective crude mortality`,`Non-elective crude mortality`,`Crude rate`)%>%
+ pivot_longer(cols=1:3,names_to = "Measure",values_to="England")
+
+crude_rates_bind<-left_join(crude_rates_table,crude_ratesE_latest)
+
+col_order<-data.frame(columns=c(value_title,"England"))
+col_order<-arrange(col_order, columns)
+
+if(col_order[1,1]=="England"){crude_rates_bind<-crude_rates_bind[,c(1,3,2)]}
+
+counts_table_bind<-counts_table
+counts_table_bind$England=NA
+
+shmi_table_bind<-shmi_table
+shmi_table_bind$England=NA
+
+table_data<-rbind(pod_table,shmi_table_bind,crude_rates_bind,counts_table_bind,coding_table)
+
+shmi_table$Measure <- factor(
+  shmi_table$Measure,
   ordered = TRUE,
   levels = c(
     "SHMI_VALUE",
     "SHMI_OD_LL",
-    "SHMI_OD_UL",
-    "Spells",
-    "Deaths",
-    "Expected",
-    "Excess deaths",
-    "Crude rate",
+    "SHMI_OD_UL"
+  ),
+  labels = c(
+    "SHMI",
+    "SHMI lower limit",
+    "SHMI upper limit"
+  )
+)
+
+crude_rates_table$Measure <- factor(
+  crude_rates_table$Measure,
+  ordered = TRUE,
+  levels = c( "Crude rate",
     "Non-elective crude mortality",
-    "Elective crude mortality",
-    "DepthElective",
-    "DepthNonElective",
-    "Invalid",
-    "symptom",
+    "Elective crude mortality"
+  ),
+  labels = c(
+    "Crude death rate per 100 spells",
+    "Non-elective crude mortality per 100 spells",
+    "Elective crude mortality per 100 spells"
+  )
+)
+
+pod_table$Measure <- factor(
+  pod_table$Measure,
+  ordered = TRUE,
+  levels = c(
     "Spells_palliative",
     "Deaths_palliative",
     "Deaths_in",
     "Deaths_outside"
   ),
   labels = c(
-    "SHMI",
-    "SHMI lower limit",
-    "SHMI upper limit",
-    "Spells",
-    "Observed deaths",
-    "Expected deaths",
-    "Excess deaths",
-    "Crude death rate per 100 spells",
-    "Non-elective crude mortality per 100 spells",
-    "Elective crude mortality per 100 spells",
-    "Depth of coding - Elective",
-    "Depth of coding - Non Elective",
-    "Invalid primary diagnosis (%)",
-    "Primary diagnosis symptom or sign (%)",
     "Spells with palliative care (%)",
     "Deaths with palliative care (%)",
     "Deaths in hospital (%)",
@@ -1261,22 +1296,29 @@ table_data$Measure <- factor(
   )
 )
 
-england_data<-table_data[table_data$Shortname == "England", ]
-england_data<-england_data[,c(1,3)]
-england_data<-pivot_wider(england_data, names_from=MeasureID, values_from=value)
-england_data$Invalid=ifelse(is.na(england_data$Invalid),0,england_data$Invalid)
+coding_table$Measure <- factor(
+  coding_table$Measure,
+  ordered = TRUE,
+  levels = c(
+    "DepthElective",
+    "DepthNonElective",
+    "Invalid",
+    "symptom"
+  ),
+  labels = c(
+    "Depth of coding - Elective",
+    "Depth of coding - Non Elective",
+    "Invalid primary diagnosis (%)",
+    "Primary diagnosis symptom or sign (%)"
+  )
+)
 
-trust_data<-table_data[table_data$Shortname != "England", ]
-trust_data<-trust_data[,c(1,3)]
-trust_data$value=ifelse(is.na(trust_data$value),0,trust_data$value)
-trust_data<-pivot_wider(trust_data, names_from=MeasureID, values_from=value)
-#trust_data<-trust_data%>% rename_at( 17, ~"Invalid" )
-trust_data$Invalid=ifelse(is.na(trust_data$Invalid),0,trust_data$Invalid)
 
+england_data<-select(table_data,Measure,England)
+england_data<-pivot_wider(england_data, names_from=Measure, values_from=England)
 
-table_data<-table_data %>%  pivot_wider(names_from = Shortname, values_from = value)
-table_data<-arrange(table_data,Measure)
-table_data<-table_data[,c(2:4)]
+trust_data<-select(table_data,-England)
+trust_data<-pivot_wider(trust_data, names_from=Measure, values_from=2)
 
 title=paste0(trustname$OrganisationName)     
 subtitle<-paste0('SHMI: ',from_publication_text,' to ',latest_publication_text, ' is ',round(trustname$value,3),', this ',hi_or_low)
@@ -1382,34 +1424,27 @@ Column {data-width=400}
 ### Tables, period up to `r latest_publication_text`
 
 ```{r table , echo=FALSE, results='asis'}
-kbl_shmi<-filter(table_data,table_data$Measure %in% c("SHMI", "SHMI lower limit","SHMI upper limit"))
-kbl_shmi %>%
+shmi_table %>%
   kbl() %>%
   kable_styling(font_size = 12)
-kbl_counts<-filter(table_data,table_data$Measure %in% c("Spells", 
-                                    "Observed deaths","Expected deaths",
-                                    "Excess deaths"))
-kbl_counts %>%
+
+counts_table %>%
   kbl() %>%
   kable_styling(font_size = 12)
-kbl_rates<-filter(table_data,table_data$Measure %in% c("Crude death rate per 100 spells",
-                                    "Non-elective crude mortality per 100 spells",
-                                    "Elective crude mortality per 100 spells"))
-kbl_rates %>%
+
+
+crude_rates_bind %>%
   kbl() %>%
   kable_styling(font_size = 12)
-kbl_coding<-filter(table_data,table_data$Measure %in% c("Depth of coding - Elective",
-                                    "Depth of coding - Non Elective","Invalid primary diagnosis (%)",
-                                    "Primary diagnosis symptom or sign (%)"))
-kbl_coding %>%
+
+coding_table %>%
   kbl() %>%
   kable_styling(font_size = 12)
-kbl_pod<-filter(table_data,table_data$Measure %in% c( "Spells with palliative care (%)",
-                                    "Deaths with palliative care (%)","Deaths in hospital (%)",
-                                    "Deaths outside hospital (%)"))
-kbl_pod %>%
+
+pod_table %>%
   kbl() %>%
   kable_styling(font_size = 12)
+  
 ```
 
 Overview {data-orientation=rows}
