@@ -5,7 +5,7 @@ output:
     theme: cosmo
     orientation: rows
 params: 
-    trust: RD8
+    trust: RQW
     
 logo: ../ext/i7white08.png
 ---
@@ -18,6 +18,7 @@ library(dplyr)        #general functions
 library(scales)       #chart scales
 library(lubridate)    #working with dates
 library(plotly)       #charts
+library(ggplot2)       #charts
 library(FunnelPlotR)  #funnel plots
 library(sqldf)        #sql functionality
 library(kableExtra)   #table format
@@ -517,11 +518,12 @@ shmi_text<- data_shmi%>%filter(ProviderCode ==params$trust & is.na(SiteType))
 shmi_text <-  shmi_text %>%
   group_by(measure) %>%
   mutate(previous_value = lag(value, order_by =PeriodEnd)) %>%
-  mutate(previous_period = lag(PeriodEnd, order_by =  PeriodEnd))
+  mutate(previous_period = lag(PeriodEnd, order_by =  PeriodEnd)) %>%
+  mutate(previous_periodstart = lag(PeriodEnd,12, order_by =   PeriodEnd))
 
 shmi_text <-  arrange(shmi_text, measure, PeriodEnd)
 
-#create variable for latest period, alues and band
+#create variable for latest period, values and band
 shmi_textlatest<-shmi_text[shmi_text$PeriodEnd == latest_publication, ]
 shmi_textlatestSHMI<-shmi_textlatest[shmi_textlatest$measure == "SHMI_VALUE", ]
 shmi_textlatestBAND<-shmi_textlatest[shmi_textlatest$measure == "SHMI_BANDING", ]
@@ -1313,7 +1315,6 @@ coding_table$Measure <- factor(
   )
 )
 
-
 england_data<-select(table_data,Measure,England)
 england_data<-pivot_wider(england_data, names_from=Measure, values_from=England)
 
@@ -1322,7 +1323,6 @@ trust_data<-pivot_wider(trust_data, names_from=Measure, values_from=2)
 
 title=paste0(trustname$OrganisationName)     
 subtitle<-paste0('SHMI: ',from_publication_text,' to ',latest_publication_text, ' is ',round(trustname$value,3),', this ',hi_or_low)
-
 ```
 
 ```{r ribbons, include=FALSE}
@@ -1373,8 +1373,8 @@ Column {data-width=600}
 ###
 <H1> SHMI </H1>
 
-<p><small>The SHMI for `r trustname$Shortname` for the period `r latest_publication_text` is `r round(trustname$value,3)`. This `r hi_or_low` and is `r if(shmi_textlatestSHMI$value>shmi_textlatest$previous_value) {"higher (worse)"} else {"lower (better)"}` than the previous period up to `r format(shmi_textlatestSHMI$previous_period,'%B-%Y') ` when the trust was `r shmi_textlatestSHMI$previous_value` and `r if(shmi_textlatestBAND$previous_value==1) {"higher than expected"} else if(shmi_textlatestBAND$previous_value==2) {"as expected"} else {"lower than expected"}`.
-
+<p><small>The SHMI for `r trustname$Shortname` for `r from_publication_text` to `r latest_publication_text` is `r round(trustname$value,3)`.
+This `r hi_or_low` and is `r if(round(trustname$value,3)>round(shmi_textlatestSHMI$previous_value,3)){"higher (worse) than for"} else if(round(trustname$value,3)<round(shmi_textlatestSHMI$previous_value,3)){"lower (better) than for"} else {"same as"}` the previous period (`r format(shmi_textlatestSHMI$previous_periodstart,'%B %Y')` to `r format(shmi_textlatestSHMI$previous_period,'%B %Y') `) when it was `r round(shmi_textlatestSHMI$previous_value,3)`   and  `r if(shmi_textlatestBAND$previous_value==1) {"higher than expected"}  else if(shmi_textlatestBAND$previous_value==2) {"as expected"} else {"lower than expected"}`.
 </small></p>
 
 <h2>By condition </h2>
@@ -1424,6 +1424,7 @@ Column {data-width=400}
 ### Tables, period up to `r latest_publication_text`
 
 ```{r table , echo=FALSE, results='asis'}
+
 shmi_table %>%
   kbl() %>%
   kable_styling(font_size = 12)
@@ -1444,7 +1445,6 @@ coding_table %>%
 pod_table %>%
   kbl() %>%
   kable_styling(font_size = 12)
-  
 ```
 
 Overview {data-orientation=rows}
@@ -1461,7 +1461,7 @@ valueBox(title,
 
 Row
 -------------------------------------
-### SHMI {data-height=400 .no-mobile}
+### SHMI {data-height=400}
 
 ```{r shmi_chart, echo=FALSE}
 
@@ -1469,62 +1469,25 @@ fig %>%  config(displaylogo = FALSE, modeBarButtonsToRemove = c("zoomIn2d","toIm
 
 ```
 
-### SHMI {data-height=400 data-width=200 .mobile}
-
-```{r shmi_chart  mobile, echo=FALSE}
-
-fig %>%  config(displaylogo = FALSE, modeBarButtonsToRemove = c("zoomIn2d","toImage","zoom2d", "zoomOut2d","pan2d","select2d","lasso2d","drawclosedpath","hoverCompareCartesian","hoverClosestCartesian","toggleSpikelines" ))
-
-```
-
-### Excess deaths by condition, period up to `r latest_publication_text`. Click to see [Conditions over time]  {data-height=400 .no-mobile}
+### Excess deaths by condition, period up to `r latest_publication_text`. Click to see [Conditions over time]  {data-height=400}
 ```{r Excess_deaths cht}
 diag_excess_fig %>% 
   config(displayModeBar = F)
 ```
 
-### Excess deaths by condition, period up to `r latest_publication_text`. Click to see [Conditions over time]  {data-height=400 data-width=200 .mobile}
-```{r Excess_deaths cht  mobile}
-diag_excess_fig %>% 
-  config(displayModeBar = F)
-```
-
-### All trusts {.mobile}
-
-```{r funnel_chart  mobile}
-
-funnel_chartfig %>%  config(displaylogo = FALSE, modeBarButtonsToRemove = c("zoomIn2d","toImage","zoom2d", "zoomOut2d","pan2d","select2d","lasso2d","drawclosedpath","hoverCompareCartesian","hoverClosestCartesian","toggleSpikelines" ))
-
-``` 
-
-### Crude death rates { .mobile}
-
-```{r crude rate charts  mobile}
- sub<-subplot(figCRall,figCRnel,figCRel,nrows=3)
- sub%>%  config(displaylogo = FALSE, modeBarButtonsToRemove = c("zoomIn2d","toImage","zoom2d", "zoomOut2d","pan2d","select2d","lasso2d","drawclosedpath","hoverCompareCartesian","hoverClosestCartesian","toggleSpikelines" ))
- 
-```
-
-### Activity { .mobile}
-
-```{r count charts mobile}
-fig <- ggplotly(counts_chart_mobile)
-fig  %>%  config(displaylogo = FALSE, modeBarButtonsToRemove = c("zoomIn2d","toImage","zoom2d", "zoomOut2d","pan2d","select2d","lasso2d","drawclosedpath","hoverCompareCartesian","hoverClosestCartesian","toggleSpikelines" ))
-```
-
-
-Row {.tabset .tabset-fade}
+Row {.tabset .tabset-fade  .no-mobile}
 -------------------------------------
-### All trusts {data-height=400 .no-mobile}
+
+### <span class="badge badge-primary">All trusts</span> {data-height=400  .no-mobile}
 
 ```{r funnel_chart}
 
 funnel_chartfig %>%  config(displaylogo = FALSE, modeBarButtonsToRemove = c("zoomIn2d","toImage","zoom2d", "zoomOut2d","pan2d","select2d","lasso2d","drawclosedpath","hoverCompareCartesian","hoverClosestCartesian","toggleSpikelines" ))
 
-```   
+``` 
 
 
-### Crude death rates {data-height=400 .no-mobile}
+### <span class="badge badge-primary">Crude death rates</span> {data-height=400 .no-mobile}
 
 ```{r crude rate charts}
  sub<-subplot(figCRall,figCRnel,figCRel,nrows=1, shareY= TRUE)
@@ -1532,60 +1495,47 @@ funnel_chartfig %>%  config(displaylogo = FALSE, modeBarButtonsToRemove = c("zoo
  
 ```
 
-
-### Activity {data-height=400 .no-mobile}
+### <span class="badge badge-primary">Activity</span> {data-height=400 .no-mobile}
 
 ```{r count charts}
 fig <- ggplotly(counts_chart)
 fig  %>%  config(displaylogo = FALSE, modeBarButtonsToRemove = c("zoomIn2d","toImage","zoom2d", "zoomOut2d","pan2d","select2d","lasso2d","drawclosedpath","hoverCompareCartesian","hoverClosestCartesian","toggleSpikelines" ))
 ```
 
-
-### Relative activity changes {data-height=400 .no-mobile}
+### <span class="badge badge-primary">Relative activity changes</span> {data-height=400 .no-mobile}
 
 ```{r activity charts}
 fig <- ggplotly(growth_chart)
 fig %>%  config(displaylogo = FALSE, modeBarButtonsToRemove = c("zoomIn2d","toImage","zoom2d", "zoomOut2d","pan2d","select2d","lasso2d","drawclosedpath","hoverCompareCartesian","hoverClosestCartesian","toggleSpikelines" ))
 ```
 
-### Conditions {data-height=400 .no-mobile}
+### <span class="badge badge-primary">Conditions</span> {data-height=400 .no-mobile}
 
 ```{r Condition funnel_chart,echo=FALSE}
 funnel_fig_condition %>%  config(displaylogo = FALSE, modeBarButtonsToRemove = c("zoomIn2d","toImage","zoom2d", "zoomOut2d","pan2d","select2d","lasso2d","drawclosedpath","hoverCompareCartesian","hoverClosestCartesian","toggleSpikelines" ))
 ```   
 
-### Coding  {data-height=400 .no-mobile}
+### <span class="badge badge-primary">Coding</span>  {data-height=400 .no-mobile}
 
 ```{r coding tab}
 fig <- ggplotly(coding_chart)
 fig %>%  config(displayModeBar = F)
 ```
  
-### Palliative care  {data-height=400 .no-mobile}
+### <span class="badge badge-primary">Palliative care</span>  {data-height=400 .no-mobile}
 
 ```{r POD tab}
 fig <- ggplotly(pod_chart)
 fig %>%  config(displayModeBar = F)
 ```
  
-### Site  {data-height=400 .no-mobile}
+### <span class="badge badge-primary">Site</span>  {data-height=400 .no-mobile}
 
 ```{r site tab}
 fig <- ggplotly(shmi_site_chart)
 fig %>%  config(displaylogo = FALSE, modeBarButtonsToRemove = c("zoomIn2d","toImage","zoom2d", "zoomOut2d","pan2d","select2d","lasso2d","drawclosedpath","hoverCompareCartesian","hoverClosestCartesian","toggleSpikelines" ))
 ```
 
-### Site2  {data-height=400  .no-mobile}
-
-```{r site tab ggiraph}
-tooltip_css <- "padding:10px;border-radius:5px;"
-my_gg <- shmi_site_chart + geom_line_interactive(aes(tooltip = paste0(Measure,": ",Value)))
-
-girafe(ggobj = my_gg, width_svg = 8, height_svg = 4,
-  options = list(opts_tooltip(use_fill = TRUE),
-                  opts_sizing(rescale = TRUE, width = 1 )) )
-
-```
 
 Conditions over time {data-orientation=rows}
 =====================================     
@@ -1606,7 +1556,7 @@ Ribbons {data-orientation=columns}
 column
 -------------------------------------
 
-### Depth of coding: elective {.no-padding}
+### Depth of coding: elective {.no-mobile}
 
 ```{r depth_el_ribbon}
 MCD_el_ribbon%>% 
@@ -1614,7 +1564,7 @@ MCD_el_ribbon%>%
 
 ```
 
-### Depth of coding: non-elective {.no-padding}
+### Depth of coding: non-elective {.no-mobile}
 
 ```{r depth_nel_ribbon }
 
@@ -1623,7 +1573,7 @@ MCD_nel_ribbon %>%
 
 ```
 
-### Coding: invalid {.no-padding}
+### Coding: invalid {.no-mobile}
 
 ```{r invalid_ribbon}
 invalid_ribbon %>% 
@@ -1631,7 +1581,7 @@ invalid_ribbon %>%
 
 ```
 
-### Coding: signs and symptoms
+### Coding: signs and symptoms{.no-mobile}
 
 ```{r symptom_ribbon}
 symptom_ribbon %>% 
@@ -1670,7 +1620,7 @@ symptom_ribbon %>%
 column
 -------------------------------------
 
-### Place of death: in hospital
+### Place of death: in hospital {.no-mobile}
 
 ```{r inhosp_ribbon}
 
@@ -1679,14 +1629,14 @@ inhosp_ribbon%>%
 
 ```
 
-### Palliative care- deaths
+### Palliative care- deaths{.no-mobile}
 
 ```{r palli_deaths_ribbon}
 palli_deaths_ribbon%>% 
   config(displayModeBar = F)
 ```
 
-### Palliative care- Spells
+### Palliative care- Spells{.no-mobile}
 
 ```{r palli_spells_ribbon}
 palli_spells_ribbon%>% 
@@ -1718,21 +1668,21 @@ palli_spells_ribbon%>%
 column
 -------------------------------------
 
-### Crude rate of deaths: all
+### Crude rate of deaths: all{.no-mobile}
 
 ```{r crude_ribbon}
   crude_ribbon %>% 
   config(displayModeBar = F)
 ```
 
-### Crude rate of deaths: Non-elective
+### Crude rate of deaths: Non-elective{.no-mobile}
 
 ```{r nelcrude_ribbon}
 nelcrude_ribbon%>% 
   config(displayModeBar = F)
 ```
 
-### Crude rate of deaths: elective
+### Crude rate of deaths: elective{.no-mobile}
 
 ```{r elcrude_ribbon}
 elcrude_ribbon%>% 
